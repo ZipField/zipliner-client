@@ -20,8 +20,8 @@ class DesktopOverlay extends ChangeNotifier {
 
   static bool get isSupported => !kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS);
 
-  static const normalSize = Size(190, 104);
-  static const followSize = Size(190, 92);
+  static const normalSize = Size(208, 116);
+  static const followSize = Size(190, 100);
   static const _followInterval = Duration(milliseconds: 500);
   static const _hideDelay = Duration(seconds: 1);
 
@@ -40,6 +40,12 @@ class DesktopOverlay extends ChangeNotifier {
   bool get followSupported => _locator.isSupported;
 
   bool get follow => followSupported && _prefs.get(PositionPrefs.followGame);
+
+  int get decimals => _prefs.get(PositionPrefs.overlayDecimals);
+
+  Size get windowSize =>
+      (follow ? followSize : normalSize) *
+      (_prefs.get(PositionPrefs.overlayScale) * _prefs.get(TfPreferenceKeys.textScale));
 
   String get hotkeyLabel => PositionPrefs.hotkeyOf(_prefs).label;
 
@@ -122,10 +128,13 @@ class DesktopOverlay extends ChangeNotifier {
     _stopFollow();
     // 不调用 setSkipTaskbar：window_manager 在 Windows 上的实现会让进程卡死或退出。
     await windowManager.setTitleBarStyle(TitleBarStyle.hidden, windowButtonVisibility: false);
+    // Windows 隐藏标题栏仍保留原生边框；浮窗需要完全无框。
+    // close() 的 TitleBarStyle.normal 会恢复普通窗口。
+    if (Platform.isWindows) await windowManager.setAsFrameless();
     await windowManager.setResizable(false);
+    await windowManager.setBackgroundColor(const Color(0x00000000));
     if (follow) {
-      await windowManager.setBackgroundColor(const Color(0x00000000));
-      await _resize(followSize);
+      await _resize(windowSize);
       // 先保持可点击，找到游戏窗口后再开启鼠标穿透，避免小窗点不动又回不去。
       await _setClickThrough(false);
       _lastFocused = DateTime.now();
@@ -133,7 +142,7 @@ class DesktopOverlay extends ChangeNotifier {
       await _followTick();
     } else {
       await _setClickThrough(false);
-      await _resize(normalSize);
+      await _resize(windowSize);
       await _setOnTop(true);
       await windowManager.show();
     }
@@ -205,7 +214,7 @@ class DesktopOverlay extends ChangeNotifier {
     final logical = Rect.fromLTRB(game.left / scale, game.top / scale, game.right / scale, game.bottom / scale);
     final position = PositionPrefs.position(_prefs);
     final offset = PositionPrefs.offset(_prefs, position);
-    final target = FollowWindowPlacement.calculate(logical, followSize, position, offset.h, offset.v);
+    final target = FollowWindowPlacement.calculate(logical, windowSize, position, offset.h, offset.v);
     _native.setPosition(target * scale);
   }
 

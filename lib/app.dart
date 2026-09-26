@@ -45,6 +45,23 @@ List<TfSettingsSection> appSettings(BuildContext context) {
   final framework = TfFramework.of(context);
   final desktop = Platform.isWindows || Platform.isLinux || Platform.isMacOS;
   return [
+    if (desktop)
+      const TfSettingsSection(
+        title: '坐标浮窗',
+        footer: '外观跟随应用主题；在坐标页打开，使用原快捷键返回。',
+        settings: [
+          TfChoiceSetting<double>(
+            key: PositionPrefs.overlayScale,
+            title: '浮窗大小',
+            options: [TfChoice(1.0, '小'), TfChoice(1.2, '中'), TfChoice(1.4, '大')],
+          ),
+          TfChoiceSetting<int>(
+            key: PositionPrefs.overlayDecimals,
+            title: '小数位数',
+            options: [TfChoice(0, '整数'), TfChoice(3, '3 位'), TfChoice(5, '5 位')],
+          ),
+        ],
+      ),
     if (Platform.isAndroid)
       const TfSettingsSection(
         title: '坐标',

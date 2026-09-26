@@ -1,14 +1,14 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:tf_framework/tf_framework.dart';
 import 'package:window_manager/window_manager.dart';
 
-import '../position/formatting.dart';
 import '../position/position_monitor.dart';
 import '../ui/app_theme.dart';
 import 'desktop_overlay.dart';
 
-/// 悬浮模式下的坐标显示，样式照搬原工具的 `CoordinateWindow`。
+/// 复用应用设计系统的小型坐标窗；跟随游戏时保留透明、穿透显示。
 class OverlayView extends StatefulWidget {
   const OverlayView({super.key, required this.overlay, required this.monitor});
 
@@ -67,9 +67,10 @@ class _OverlayViewState extends State<OverlayView> {
     // 跟随模式下找不到游戏窗口时，小窗保持可点击，需要露出返回按钮。
     final clickable = !follow || overlay.warning != null;
 
-    final valueColor = follow ? Colors.white : const Color(0xFFE8EAED);
-    final labelColor = follow ? Colors.white : const Color(0xFF9AA0A6);
-    final fontSize = follow ? 14.4 : 12.0;
+    final colors = Theme.of(context).colorScheme;
+    final valueColor = follow ? Colors.white : colors.onSurface;
+    final labelColor = follow ? Colors.white : colors.primary;
+    final fontSize = 14.0;
     final shadows = follow
         ? const [Shadow(color: Color(0xFF191919), blurRadius: 5), Shadow(color: Color(0xFF191919), blurRadius: 2)]
         : null;
@@ -85,7 +86,7 @@ class _OverlayViewState extends State<OverlayView> {
             overflow: TextOverflow.ellipsis,
             style: mono.copyWith(
               fontFamily: AppFonts.family,
-              color: monitor.isError ? const Color(0xFFFFB4AB) : valueColor,
+              color: monitor.isError ? (follow ? const Color(0xFFFFB4AB) : colors.error) : valueColor,
             ),
           )
         : Column(
@@ -97,7 +98,15 @@ class _OverlayViewState extends State<OverlayView> {
                   children: [
                     SizedBox(width: 20, child: Text(name, style: label)),
                     Expanded(
-                      child: Text(formatCoordinate(value), textAlign: TextAlign.right, style: mono),
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerRight,
+                        child: Text(
+                          // Avoid displaying negative zero after rounding.
+                          _coordinate(value, overlay.decimals),
+                          style: mono.copyWith(fontWeight: FontWeight.w600),
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -114,7 +123,7 @@ class _OverlayViewState extends State<OverlayView> {
             '已识别滑索 ${toast.label}',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: small.copyWith(color: const Color(0xFF8AB4F8)),
+            style: small.copyWith(color: follow ? const Color(0xFF8AB4F8) : colors.primary),
           )
         else if (follow && overlay.warning != null)
           Text('未找到游戏窗口', maxLines: 1, style: small.copyWith(color: const Color(0xFFFFB4AB)))
@@ -141,28 +150,50 @@ class _OverlayViewState extends State<OverlayView> {
       ),
     );
 
+    Widget fitWindow(Widget child) => FittedBox(
+      fit: BoxFit.contain,
+      child: SizedBox.fromSize(
+        size: follow ? DesktopOverlay.followSize : DesktopOverlay.normalSize,
+        child: MediaQuery.withNoTextScaling(child: child),
+      ),
+    );
+
     if (follow) {
-      return ColoredBox(
-        color: Colors.transparent,
-        child: Stack(
-          children: [
-            Padding(padding: EdgeInsets.fromLTRB(4, 4, clickable ? 24 : 4, 4), child: content),
-            if (clickable) returnButton,
-          ],
+      return fitWindow(
+        ColoredBox(
+          color: Colors.transparent,
+          child: Stack(
+            children: [
+              Padding(padding: EdgeInsets.fromLTRB(4, 4, clickable ? 24 : 4, 4), child: content),
+              if (clickable) returnButton,
+            ],
+          ),
         ),
       );
     }
 
-    return DragToMoveArea(
-      child: ColoredBox(
-        color: const Color(0xFF202124),
-        child: Stack(
-          children: [
-            Padding(padding: const EdgeInsets.fromLTRB(10, 10, 24, 10), child: content),
-            returnButton,
-          ],
+    return GestureDetector(
+      onPanStart: (_) => windowManager.startDragging(),
+      child: fitWindow(
+        TfCard(
+          padding: EdgeInsets.zero,
+          // A desktop window has no app surface behind the glass material.
+          child: ColoredBox(
+            color: colors.surface,
+            child: Stack(
+              children: [
+                Padding(padding: const EdgeInsets.fromLTRB(12, 12, 28, 12), child: content),
+                returnButton,
+              ],
+            ),
+          ),
         ),
       ),
     );
   }
+}
+
+String _coordinate(double value, int decimals) {
+  final text = value.toStringAsFixed(decimals);
+  return text.startsWith('-') && double.tryParse(text) == 0 ? text.substring(1) : text;
 }

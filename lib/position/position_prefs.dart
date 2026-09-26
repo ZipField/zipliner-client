@@ -28,6 +28,20 @@ abstract final class PositionPrefs {
   /// 是否已经看过“坐标窗口怎么返回”的说明。
   static const overlayHintShown = TfPreferenceKey<bool>('position.overlayHintShown', defaultValue: false);
 
+  static const overlayScale = TfPreferenceKey<double>(
+    'position.overlay.scale',
+    defaultValue: 1,
+    validator: _validOverlayScale,
+  );
+  static const overlayDecimals = TfPreferenceKey<int>(
+    'position.overlay.decimals',
+    defaultValue: 3,
+    validator: _validOverlayDecimals,
+  );
+
+  static bool _validOverlayScale(double value) => const [1.0, 1.2, 1.4].contains(value);
+  static bool _validOverlayDecimals(int value) => const [0, 3, 5].contains(value);
+
   static FollowPosition position(TfPreferencesController prefs) => FollowPosition.parse(prefs.get(followPosition));
 
   static ({double h, double v}) offset(TfPreferencesController prefs, FollowPosition position) {
