@@ -88,8 +88,8 @@ class PositionSocket {
   void Function()? _requestPosition;
 
   static void validateRequestInterval(Duration value) {
-    if (value != Duration.zero && (value < const Duration(seconds: 1) || value > const Duration(seconds: 10))) {
-      throw ArgumentError.value(value, 'requestInterval', '必须为 0 或 1–10 秒');
+    if (value != Duration.zero && (value < const Duration(milliseconds: 200) || value > const Duration(seconds: 10))) {
+      throw ArgumentError.value(value, 'requestInterval', '必须为 0 或 0.2–10 秒');
     }
   }
 

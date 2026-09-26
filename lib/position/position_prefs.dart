@@ -8,13 +8,25 @@ import 'follow_placement.dart';
 
 /// 持久化的用户选项，存放在框架的偏好设置里。对应原工具的 `settings.json`。
 abstract final class PositionPrefs {
-  /// 0 保留服务端推送；其他值为主动刷新请求的间隔秒数。
-  static const requestSeconds = TfPreferenceKey<int>(
-    'position.requestSeconds',
-    defaultValue: 0,
-    validator: _validRequestSeconds,
+  static const requestPolling = TfPreferenceKey<bool>('position.requestPolling', defaultValue: false);
+  static const requestIntervalSeconds = TfPreferenceKey<double>(
+    'position.requestIntervalSeconds',
+    defaultValue: 3,
+    validator: _validRequestInterval,
   );
-  static bool _validRequestSeconds(int value) => const [0, 1, 3, 5, 10].contains(value);
+  static bool _validRequestInterval(double value) => value >= 0.2 && value <= 10;
+
+  /// 升级时保留旧版离散档位的选择。
+  static Future<void> migrateRequestSpeed(TfPreferencesController prefs) async {
+    const legacy = TfPreferenceKey<int>('position.requestSeconds', defaultValue: 0);
+    if (!prefs.isCustomized(legacy)) return;
+    final seconds = prefs.get(legacy);
+    if (const [1, 3, 5, 10].contains(seconds)) {
+      if (!prefs.isCustomized(requestIntervalSeconds)) await prefs.set(requestIntervalSeconds, seconds.toDouble());
+      if (!prefs.isCustomized(requestPolling)) await prefs.set(requestPolling, true);
+    }
+    await prefs.reset(legacy);
+  }
 
   static const followGame = TfPreferenceKey<bool>('position.followGame', defaultValue: false);
   static const followPosition = TfPreferenceKey<String>('position.followPosition', defaultValue: 'top');

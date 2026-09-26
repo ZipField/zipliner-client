@@ -37,7 +37,9 @@ class AppServices {
   }) : system = SystemApi(client) {
     if (preferences != null) {
       void syncRequestSpeed() {
-        monitor.requestInterval = Duration(seconds: preferences.get(PositionPrefs.requestSeconds));
+        monitor.requestInterval = preferences.get(PositionPrefs.requestPolling)
+            ? Duration(milliseconds: (preferences.get(PositionPrefs.requestIntervalSeconds) * 1000).round())
+            : Duration.zero;
       }
 
       syncRequestSpeed();

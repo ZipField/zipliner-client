@@ -93,6 +93,13 @@ void main() {
     socket.requestInterval = const Duration(seconds: 1);
     await tester.pump(const Duration(seconds: 1));
     expect(transport.requests, 6);
+    socket.requestInterval = const Duration(milliseconds: 200);
+    await tester.pump(const Duration(milliseconds: 199));
+    expect(transport.requests, 6);
+    await tester.pump(const Duration(milliseconds: 1));
+    expect(transport.requests, 7);
+    await tester.pump(const Duration(milliseconds: 800));
+    expect(transport.requests, 11, reason: '0.2 秒每秒发送 5 次实际刷新请求');
     await socket.close();
     await tester.pump(const Duration(milliseconds: 1));
     await tester.runAsync(() async {
@@ -102,7 +109,7 @@ void main() {
     expect(completed, isTrue);
     expect(reason, isNull);
     await tester.pump(const Duration(seconds: 20));
-    expect(transport.requests, 6);
+    expect(transport.requests, 11);
   });
 
   testWidgets('服务器关闭后停止刷新，再次连接沿用速度且只建立一组计时器', (tester) async {
@@ -154,11 +161,37 @@ void main() {
     await prefs.load();
     final services = AppServices.inMemory(prefs);
     expect(services.monitor.requestInterval, Duration.zero);
-    await prefs.set(PositionPrefs.requestSeconds, 5);
+    await prefs.set(PositionPrefs.requestIntervalSeconds, 5.0);
+    await prefs.set(PositionPrefs.requestPolling, true);
     expect(services.monitor.requestInterval, const Duration(seconds: 5));
+    await prefs.set(PositionPrefs.requestIntervalSeconds, 0.2);
+    expect(services.monitor.requestInterval, const Duration(milliseconds: 200));
+    await prefs.set(PositionPrefs.requestPolling, false);
+    expect(services.monitor.requestInterval, Duration.zero);
+    await prefs.set(PositionPrefs.requestIntervalSeconds, 5.0);
+    await prefs.set(PositionPrefs.requestPolling, true);
     services.dispose();
-    await prefs.set(PositionPrefs.requestSeconds, 1);
+    await prefs.set(PositionPrefs.requestIntervalSeconds, 1.0);
     expect(services.monitor.requestInterval, const Duration(seconds: 5));
     expect(() => PositionSocket().requestInterval = const Duration(milliseconds: 10), throwsArgumentError);
+  });
+
+  test('旧速度迁移且不会覆盖新版设置，拒绝低于 0.2 秒的值', () async {
+    final prefs = TfPreferencesController(store: TfMemoryPreferenceStore());
+    await prefs.load();
+    await prefs.import({'position.requestSeconds': 5});
+    await PositionPrefs.migrateRequestSpeed(prefs);
+    expect(prefs.get(PositionPrefs.requestPolling), isTrue);
+    expect(prefs.get(PositionPrefs.requestIntervalSeconds), 5.0);
+    await prefs.import({
+      'position.requestSeconds': 5,
+      'position.requestPolling': false,
+      'position.requestIntervalSeconds': 0.2,
+    });
+    await PositionPrefs.migrateRequestSpeed(prefs);
+    expect(prefs.get(PositionPrefs.requestPolling), isFalse);
+    expect(prefs.get(PositionPrefs.requestIntervalSeconds), 0.2);
+    expect(() => prefs.set(PositionPrefs.requestIntervalSeconds, 0.1), throwsArgumentError);
+    expect(() => prefs.set(PositionPrefs.requestIntervalSeconds, double.nan), throwsArgumentError);
   });
 }

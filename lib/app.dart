@@ -23,6 +23,7 @@ Future<(TfFramework, AppServices)> bootstrap() async {
     settingsBuilder: appSettings,
   );
   final dataDirectory = await AppServices.defaultDataDirectory();
+  await PositionPrefs.migrateRequestSpeed(framework.preferences);
   AppLog.instance
     ..attachFile(dataDirectory)
     ..info('${AppInfo.name} ${AppInfo.version} 启动，${Platform.operatingSystem} ${Platform.operatingSystemVersion}');
@@ -45,20 +46,18 @@ List<TfSettingsSection> appSettings(BuildContext context) {
   final framework = TfFramework.of(context);
   final desktop = Platform.isWindows || Platform.isLinux || Platform.isMacOS;
   return [
-    const TfSettingsSection(
+    TfSettingsSection(
       title: '坐标同步',
       settings: [
-        TfChoiceSetting<int>(
-          key: PositionPrefs.requestSeconds,
+        const TfToggleSetting(key: PositionPrefs.requestPolling, title: '主动刷新坐标', subtitle: '关闭时仅接收服务器自动推送。'),
+        TfSliderSetting(
+          key: PositionPrefs.requestIntervalSeconds,
           title: '请求速度',
-          subtitle: '主动刷新坐标的间隔，修改后立即生效。自动模式仅接收推送；实际更新速度取决于服务器。',
-          options: [
-            TfChoice(0, '自动（服务端推送）'),
-            TfChoice(1, '快 · 每 1 秒'),
-            TfChoice(3, '标准 · 每 3 秒'),
-            TfChoice(5, '慢 · 每 5 秒'),
-            TfChoice(10, '低频 · 每 10 秒'),
-          ],
+          subtitle: '开启主动刷新后生效。间隔越小，请求越快；实际更新速度取决于服务器。',
+          min: 0.2,
+          max: 10,
+          divisions: 98,
+          format: (value) => '${value.toStringAsFixed(1)} 秒',
         ),
       ],
     ),
