@@ -1,0 +1,9 @@
+* text=auto eol=lf
+
+# Windows 用户会用记事本打开的文件保持 CRLF
+packaging/windows/*.txt text eol=crlf
+*.bat text eol=crlf
+
+*.png binary
+*.ico binary
+*.jks binary
