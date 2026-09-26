@@ -16,7 +16,7 @@ env:
 jobs:
   meta:
     name: Resolve version
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       version: ${{ steps.v.outputs.version }}
       build_name: ${{ steps.v.outputs.build_name }}
@@ -35,9 +35,9 @@ jobs:
 
   test:
     name: Analyze & test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
@@ -50,11 +50,11 @@ jobs:
   windows:
     name: Windows x64
     needs: [meta, test]
-    runs-on: windows-latest
+    runs-on: windows-2025
     env:
       VERSION: ${{ needs.meta.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
@@ -86,7 +86,7 @@ jobs:
           Pop-Location
           $exe = 7z l -slt "dist/$name.zip" | Select-String -SimpleMatch "Path = $name\zipliner_client.exe"
           if (-not $exe) { throw "压缩包结构不对：根目录下找不到 $name\zipliner_client.exe" }
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: windows
           path: dist/*.zip
@@ -94,11 +94,11 @@ jobs:
   linux:
     name: Linux x64
     needs: [meta, test]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       VERSION: ${{ needs.meta.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install build dependencies
         run: |
           sudo apt-get update
@@ -122,7 +122,7 @@ jobs:
           cp -r build/linux/x64/release/bundle "$name"
           cp LICENSE "$name/"
           tar -czf "dist/$name.tar.gz" "$name"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: linux
           path: dist/*.tar.gz
@@ -130,12 +130,12 @@ jobs:
   android:
     name: Android
     needs: [meta, test]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       VERSION: ${{ needs.meta.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '17'
@@ -173,7 +173,7 @@ jobs:
         run: |
           mkdir -p dist
           cp build/app/outputs/flutter-apk/app-release.apk "dist/zipliner-client-${VERSION}-android.apk"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: android
           path: dist/*.apk
@@ -182,13 +182,13 @@ jobs:
     name: Publish release
     if: github.ref_type == 'tag'
     needs: [meta, windows, linux, android]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       VERSION: ${{ needs.meta.outputs.version }}
       GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
