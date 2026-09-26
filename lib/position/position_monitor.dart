@@ -80,6 +80,15 @@ class PositionMonitor extends ChangeNotifier {
 
   int _runId = 0;
   PositionSocket? _socket;
+  Duration _requestInterval = Duration.zero;
+  Duration get requestInterval => _requestInterval;
+  set requestInterval(Duration value) {
+    PositionSocket.validateRequestInterval(value);
+    if (value == _requestInterval) return;
+    _requestInterval = value;
+    _socket?.requestInterval = value;
+  }
+
   bool _disposed = false;
   int _retryAttempt = 0;
   Timer? _retryTimer;
@@ -163,6 +172,7 @@ class PositionMonitor extends ChangeNotifier {
       _notify();
 
       final socket = _socket = _socketFactory();
+      socket.requestInterval = requestInterval;
       final reason = await socket.run(
         websocketToken: websocketToken,
         role: role.binding,

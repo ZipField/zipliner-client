@@ -33,7 +33,20 @@ class AppServices {
     required this.updates,
     required this.dataDirectory,
     this.overlay,
-  }) : system = SystemApi(client);
+    TfPreferencesController? preferences,
+  }) : system = SystemApi(client) {
+    if (preferences != null) {
+      void syncRequestSpeed() {
+        monitor.requestInterval = Duration(seconds: preferences.get(PositionPrefs.requestSeconds));
+      }
+
+      syncRequestSpeed();
+      preferences.addListener(syncRequestSpeed);
+      _removePreferenceListener = () => preferences.removeListener(syncRequestSpeed);
+    }
+  }
+
+  VoidCallback? _removePreferenceListener;
 
   /// 生产装配：Cookie 与 token 都存到系统安全存储。
   factory AppServices.create(
@@ -44,6 +57,7 @@ class AppServices {
     final skland = SklandClient(languageProvider: () => languageProvider?.call()?.split('-').first ?? 'zh');
     final tokens = TokenRepository(SecureTokenStore());
     return AppServices(
+      preferences: prefs,
       client: ApiClient(
         baseUrl: AppConfig.apiBaseUrl,
         cookieJar: PersistCookieJar(storage: SecureCookieStorage()),
@@ -73,6 +87,7 @@ class AppServices {
     final repository = TokenRepository(MemoryTokenStore(tokens));
     final dataDirectory = Directory.systemTemp.path;
     return AppServices(
+      preferences: prefs,
       client: ApiClient(baseUrl: baseUrl, cookieJar: CookieJar(), httpClientAdapter: httpClientAdapter),
       skland: skland,
       tokens: repository,
@@ -122,6 +137,7 @@ class AppServices {
   final DesktopOverlay? overlay;
 
   void dispose() {
+    _removePreferenceListener?.call();
     monitor.dispose();
     overlay?.dispose();
     updates.dispose();

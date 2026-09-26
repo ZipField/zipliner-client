@@ -70,13 +70,18 @@ class _OverlayViewState extends State<OverlayView> {
     final colors = Theme.of(context).colorScheme;
     final valueColor = follow ? Colors.white : colors.onSurface;
     final labelColor = follow ? Colors.white : colors.primary;
-    final fontSize = 14.0;
+    final fontSize = follow ? 14.0 : 15.0;
     final shadows = follow
         ? const [Shadow(color: Color(0xFF191919), blurRadius: 5), Shadow(color: Color(0xFF191919), blurRadius: 2)]
         : null;
-    final mono = AppFonts.monoStyle(TextStyle(fontSize: fontSize, color: valueColor, shadows: shadows, height: 1.5));
-    final label = mono.copyWith(color: labelColor);
-    final small = mono.copyWith(fontFamily: AppFonts.family, fontSize: 11, height: 1.3);
+    final mono = AppFonts.monoStyle(TextStyle(fontSize: fontSize, color: valueColor, shadows: shadows, height: 1.2));
+    final label = mono.copyWith(color: labelColor, fontSize: 11, fontWeight: FontWeight.w600);
+    final small = mono.copyWith(
+      fontFamily: AppFonts.family,
+      fontSize: 10,
+      height: 1.3,
+      color: follow ? Colors.white : colors.onSurfaceVariant,
+    );
 
     final position = monitor.position;
     final Widget body = position == null
@@ -94,21 +99,36 @@ class _OverlayViewState extends State<OverlayView> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               for (final (name, value) in [('X', position.x), ('Y', position.y), ('Z', position.z)])
-                Row(
-                  children: [
-                    SizedBox(width: 20, child: Text(name, style: label)),
-                    Expanded(
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        alignment: Alignment.centerRight,
-                        child: Text(
-                          // Avoid displaying negative zero after rounding.
-                          _coordinate(value, overlay.decimals),
-                          style: mono.copyWith(fontWeight: FontWeight.w600),
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 20,
+                        height: 20,
+                        alignment: Alignment.center,
+                        decoration: follow
+                            ? null
+                            : BoxDecoration(
+                                color: colors.primary.withValues(alpha: 0.10),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                        child: Text(name, style: label),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerRight,
+                          child: Text(
+                            // Avoid displaying negative zero after rounding.
+                            _coordinate(value, overlay.decimals),
+                            style: mono.copyWith(fontWeight: FontWeight.w600),
+                          ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
             ],
           );
@@ -118,6 +138,7 @@ class _OverlayViewState extends State<OverlayView> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         body,
+        if (toast != null || (follow && overlay.warning != null) || showHint) const SizedBox(height: 4),
         if (toast != null)
           Text(
             '已识别滑索 ${toast.label}',
@@ -133,8 +154,8 @@ class _OverlayViewState extends State<OverlayView> {
     );
 
     final returnButton = Positioned(
-      top: 2,
-      right: 2,
+      top: 4,
+      right: 4,
       // 悬浮视图不在 Navigator 之下，没有 Overlay，不能用 Tooltip。
       child: Semantics(
         button: true,
@@ -144,7 +165,12 @@ class _OverlayViewState extends State<OverlayView> {
           radius: 14,
           child: Padding(
             padding: const EdgeInsets.all(4),
-            child: Icon(Icons.open_in_full, size: 14, color: labelColor, shadows: shadows),
+            child: Icon(
+              Icons.open_in_full,
+              size: 12,
+              color: follow ? Colors.white : colors.onSurfaceVariant,
+              shadows: shadows,
+            ),
           ),
         ),
       ),
@@ -178,11 +204,20 @@ class _OverlayViewState extends State<OverlayView> {
         TfCard(
           padding: EdgeInsets.zero,
           // A desktop window has no app surface behind the glass material.
-          child: ColoredBox(
-            color: colors.surface,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [colors.surfaceContainerLow, colors.surface],
+              ),
+            ),
             child: Stack(
               children: [
-                Padding(padding: const EdgeInsets.fromLTRB(12, 12, 28, 12), child: content),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 12, 28, 12),
+                  child: Center(child: content),
+                ),
                 returnButton,
               ],
             ),

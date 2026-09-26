@@ -83,6 +83,38 @@ class PositionSocket {
 
   WebSocket? _socket;
   bool _cancelled = false;
+  Duration _requestInterval = Duration.zero;
+  Timer? _requestTimer;
+  void Function()? _requestPosition;
+
+  static void validateRequestInterval(Duration value) {
+    if (value != Duration.zero && (value < const Duration(seconds: 1) || value > const Duration(seconds: 10))) {
+      throw ArgumentError.value(value, 'requestInterval', '必须为 0 或 1–10 秒');
+    }
+  }
+
+  /// 调整实际发出的 1011 刷新请求；不改变心跳或丢弃服务端推送。
+  Duration get requestInterval => _requestInterval;
+  set requestInterval(Duration value) {
+    validateRequestInterval(value);
+    if (_requestInterval == value) return;
+    _requestInterval = value;
+    _rescheduleRequests();
+  }
+
+  void _rescheduleRequests() {
+    _requestTimer?.cancel();
+    _requestTimer = null;
+    if (_requestPosition != null && _requestInterval > Duration.zero) {
+      _requestTimer = Timer.periodic(_requestInterval, (_) => _requestPosition?.call());
+    }
+  }
+
+  void _stopRequests() {
+    _requestTimer?.cancel();
+    _requestTimer = null;
+    _requestPosition = null;
+  }
 
   /// 运行直到断开，返回断开原因；调用 [close] 主动断开时返回 null。
   Future<String?> run({
@@ -93,6 +125,7 @@ class PositionSocket {
     void Function()? onSubscribed,
     String? language,
   }) async {
+    _stopRequests();
     _cancelled = false;
     final headers = {'sk-language': ?SklandClient.skLanguage(region, language)};
     final url = SklandClient.wsUrl(region) + path;
@@ -117,6 +150,7 @@ class PositionSocket {
       if (done.isCompleted) return;
       initialTimer?.cancel();
       heartbeat?.cancel();
+      _stopRequests();
       done.complete(_cancelled ? null : reason);
       socket.close();
     }
@@ -132,6 +166,14 @@ class PositionSocket {
         if (message.type == WsMessageType.authAck && !subscribed) {
           subscribed = true;
           socket.add(_message(WsMessageType.subscribe, {'roleId': role.roleId, 'serverId': role.serverId}));
+          _requestPosition = () {
+            try {
+              socket.add(_message(WsMessageType.subscribe, {'roleId': role.roleId, 'serverId': role.serverId}));
+            } catch (_) {
+              finish('WebSocket 连接已断开');
+            }
+          };
+          _rescheduleRequests();
           initialTimer = Timer(initialPositionTimeout, () => finish('角色不在线（未收到坐标）'));
           onSubscribed?.call();
         } else if (message.type == WsMessageType.position && message.position != null) {
@@ -161,6 +203,7 @@ class PositionSocket {
 
   Future<void> close() async {
     _cancelled = true;
+    _stopRequests();
     await _socket?.close();
   }
 

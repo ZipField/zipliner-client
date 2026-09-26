@@ -8,6 +8,14 @@ import 'follow_placement.dart';
 
 /// 持久化的用户选项，存放在框架的偏好设置里。对应原工具的 `settings.json`。
 abstract final class PositionPrefs {
+  /// 0 保留服务端推送；其他值为主动刷新请求的间隔秒数。
+  static const requestSeconds = TfPreferenceKey<int>(
+    'position.requestSeconds',
+    defaultValue: 0,
+    validator: _validRequestSeconds,
+  );
+  static bool _validRequestSeconds(int value) => const [0, 1, 3, 5, 10].contains(value);
+
   static const followGame = TfPreferenceKey<bool>('position.followGame', defaultValue: false);
   static const followPosition = TfPreferenceKey<String>('position.followPosition', defaultValue: 'top');
 

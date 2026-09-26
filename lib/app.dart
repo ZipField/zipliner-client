@@ -45,6 +45,23 @@ List<TfSettingsSection> appSettings(BuildContext context) {
   final framework = TfFramework.of(context);
   final desktop = Platform.isWindows || Platform.isLinux || Platform.isMacOS;
   return [
+    const TfSettingsSection(
+      title: '坐标同步',
+      settings: [
+        TfChoiceSetting<int>(
+          key: PositionPrefs.requestSeconds,
+          title: '请求速度',
+          subtitle: '主动刷新坐标的间隔，修改后立即生效。自动模式仅接收推送；实际更新速度取决于服务器。',
+          options: [
+            TfChoice(0, '自动（服务端推送）'),
+            TfChoice(1, '快 · 每 1 秒'),
+            TfChoice(3, '标准 · 每 3 秒'),
+            TfChoice(5, '慢 · 每 5 秒'),
+            TfChoice(10, '低频 · 每 10 秒'),
+          ],
+        ),
+      ],
+    ),
     if (desktop)
       const TfSettingsSection(
         title: '坐标浮窗',

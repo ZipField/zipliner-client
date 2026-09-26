@@ -138,10 +138,14 @@ void main() {
   test('连接流程：加载角色 → 取 ws token → 接收坐标与 mapId', () async {
     final socket = FakeSocket();
     final monitor = monitorWith(FakeAdapter(sklandResponder), tokens: [token], socket: socket);
+    monitor.requestInterval = const Duration(seconds: 3);
     final run = monitor.start();
     await pumpUntil(() => socket.token != null);
 
     expect(socket.token, 'ws-token');
+    expect(socket.requestInterval, const Duration(seconds: 3));
+    monitor.requestInterval = const Duration(seconds: 5);
+    expect(socket.requestInterval, const Duration(seconds: 5));
     expect(socket.role!.roleId, '42');
     expect(monitor.activeRole!.displayName, '官服 - 管理员');
     expect(monitor.status, '已连接：官服 - 管理员，等待坐标...');
