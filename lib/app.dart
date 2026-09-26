@@ -10,6 +10,7 @@ import 'core/app_info.dart';
 import 'core/app_log.dart';
 import 'core/diagnostics.dart';
 import 'core/services.dart';
+import 'core/update_checker.dart';
 import 'desktop/overlay_view.dart';
 import 'pages/help_page.dart';
 import 'position/position_prefs.dart';
@@ -46,21 +47,6 @@ List<TfSettingsSection> appSettings(BuildContext context) {
   final framework = TfFramework.of(context);
   final desktop = Platform.isWindows || Platform.isLinux || Platform.isMacOS;
   return [
-    TfSettingsSection(
-      title: '坐标同步',
-      settings: [
-        const TfToggleSetting(key: PositionPrefs.requestPolling, title: '主动刷新坐标', subtitle: '关闭时仅接收服务器自动推送。'),
-        TfSliderSetting(
-          key: PositionPrefs.requestIntervalSeconds,
-          title: '请求速度',
-          subtitle: '开启主动刷新后生效。间隔越小，请求越快；实际更新速度取决于服务器。',
-          min: 0.2,
-          max: 10,
-          divisions: 98,
-          format: (value) => '${value.toStringAsFixed(1)} 秒',
-        ),
-      ],
-    ),
     if (desktop)
       const TfSettingsSection(
         title: '坐标浮窗',
@@ -153,14 +139,30 @@ Future<void> checkForUpdates(BuildContext context, {bool silent = true}) async {
     if (!silent) showTfToast(context, updates.lastResult ?? '已是最新版本');
     return;
   }
-  final open = await showTfConfirm(
-    context,
-    title: '发现新版本 ${info.version}',
-    message: '当前版本 ${AppInfo.version}。打开下载页面下载新版本后，解压覆盖旧文件即可，账号和设置都会保留。',
-    confirmLabel: '去下载',
-    cancelLabel: '以后再说',
-  );
-  if (open) await launchUrl(Uri.parse(info.url));
+  await presentUpdatePrompt(context, info, automatic: silent);
+}
+
+Future<void> presentUpdatePrompt(BuildContext context, UpdateInfo info, {bool automatic = false}) async {
+  final services = AppServices.of(context);
+  final updates = services.updates;
+  if (updates.promptOpen ||
+      (automatic && (updates.lastPromptedVersion == info.version || services.overlay?.active == true))) {
+    return;
+  }
+  updates.promptOpen = true;
+  updates.lastPromptedVersion = info.version;
+  try {
+    final open = await showTfConfirm(
+      context,
+      title: '发现新版本 ${info.version}',
+      message: '当前版本 ${updates.currentVersion}。打开下载页面下载新版本后，解压覆盖旧文件即可，账号和设置都会保留。',
+      confirmLabel: '去下载',
+      cancelLabel: '以后再说',
+    );
+    if (open) await launchUrl(Uri.parse(info.url));
+  } finally {
+    updates.promptOpen = false;
+  }
 }
 
 /// 把框架的语言偏好（空串表示跟随系统）转换成服务端 `X-Language` 的取值。

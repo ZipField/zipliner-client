@@ -69,21 +69,43 @@ class _OverlayViewState extends State<OverlayView> {
 
     final colors = Theme.of(context).colorScheme;
     final valueColor = follow ? Colors.white : colors.onSurface;
-    final labelColor = follow ? Colors.white : colors.primary;
-    final fontSize = follow ? 14.0 : 15.0;
+    final labelColor = follow ? Colors.white : colors.onSurfaceVariant;
+    final fontSize = follow ? 14.0 : 18.0;
     final shadows = follow
         ? const [Shadow(color: Color(0xFF191919), blurRadius: 5), Shadow(color: Color(0xFF191919), blurRadius: 2)]
         : null;
-    final mono = AppFonts.monoStyle(TextStyle(fontSize: fontSize, color: valueColor, shadows: shadows, height: 1.2));
-    final label = mono.copyWith(color: labelColor, fontSize: 11, fontWeight: FontWeight.w600);
+    final mono = AppFonts.monoStyle(TextStyle(fontSize: fontSize, color: valueColor, shadows: shadows, height: 1));
+    final label = mono.copyWith(color: labelColor, fontSize: 10, fontWeight: FontWeight.w500);
     final small = mono.copyWith(
       fontFamily: AppFonts.family,
-      fontSize: 10,
-      height: 1.3,
+      fontSize: follow ? 10 : 9,
+      height: 1.2,
       color: follow ? Colors.white : colors.onSurfaceVariant,
     );
 
     final position = monitor.position;
+    Widget readout(double value) {
+      final text = _coordinate(value, overlay.decimals);
+      final dot = text.indexOf('.');
+      return Text.rich(
+        TextSpan(
+          children: [
+            TextSpan(text: dot < 0 ? text : text.substring(0, dot)),
+            if (dot >= 0)
+              TextSpan(
+                text: text.substring(dot),
+                style: TextStyle(
+                  color: follow ? Colors.white : colors.onSurfaceVariant,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w400,
+                ),
+              ),
+          ],
+        ),
+        style: mono.copyWith(fontWeight: FontWeight.w600),
+      );
+    }
+
     final Widget body = position == null
         ? Text(
             monitor.problem?.title ?? (monitor.status.isEmpty ? '正在连接...' : monitor.status),
@@ -104,27 +126,28 @@ class _OverlayViewState extends State<OverlayView> {
                   child: Row(
                     children: [
                       Container(
-                        width: 20,
-                        height: 20,
-                        alignment: Alignment.center,
-                        decoration: follow
-                            ? null
-                            : BoxDecoration(
-                                color: colors.primary.withValues(alpha: 0.10),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                        child: Text(name, style: label),
+                        width: 3,
+                        height: 10,
+                        margin: const EdgeInsets.only(right: 7),
+                        decoration: BoxDecoration(
+                          color: follow ? Colors.white70 : colors.primary.withValues(alpha: 0.65),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                      SizedBox(
+                        width: 12,
+                        height: 18,
+                        child: Align(
+                          alignment: Alignment.center,
+                          child: Text(name, style: label),
+                        ),
                       ),
                       const SizedBox(width: 10),
                       Expanded(
                         child: FittedBox(
                           fit: BoxFit.scaleDown,
                           alignment: Alignment.centerRight,
-                          child: Text(
-                            // Avoid displaying negative zero after rounding.
-                            _coordinate(value, overlay.decimals),
-                            style: mono.copyWith(fontWeight: FontWeight.w600),
-                          ),
+                          child: readout(value),
                         ),
                       ),
                     ],
@@ -137,6 +160,19 @@ class _OverlayViewState extends State<OverlayView> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (!follow) ...[
+          SizedBox(
+            height: 16,
+            child: Row(
+              children: [
+                Icon(Icons.my_location_rounded, size: 10, color: colors.primary),
+                const SizedBox(width: 5),
+                Text('坐标', style: small.copyWith(fontWeight: FontWeight.w500, letterSpacing: 1)),
+              ],
+            ),
+          ),
+          const SizedBox(height: 3),
+        ],
         body,
         if (toast != null || (follow && overlay.warning != null) || showHint) const SizedBox(height: 4),
         if (toast != null)
@@ -154,8 +190,8 @@ class _OverlayViewState extends State<OverlayView> {
     );
 
     final returnButton = Positioned(
-      top: 4,
-      right: 4,
+      top: 6,
+      right: 8,
       // 悬浮视图不在 Navigator 之下，没有 Overlay，不能用 Tooltip。
       child: Semantics(
         button: true,
@@ -209,13 +245,16 @@ class _OverlayViewState extends State<OverlayView> {
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [colors.surfaceContainerLow, colors.surface],
+                colors: [
+                  Color.alphaBlend(colors.primary.withValues(alpha: 0.035), colors.surfaceContainerLow),
+                  colors.surface,
+                ],
               ),
             ),
             child: Stack(
               children: [
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 12, 28, 12),
+                  padding: const EdgeInsets.fromLTRB(14, 7, 14, 7),
                   child: Center(child: content),
                 ),
                 returnButton,

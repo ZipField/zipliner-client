@@ -3,6 +3,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tf_framework/tf_framework.dart';
 import 'package:zipliner_client/app.dart';
 import 'package:zipliner_client/core/services.dart';
+import 'package:zipliner_client/core/update_checker.dart';
+import 'package:zipliner_client/desktop/desktop_overlay.dart';
+import 'package:dio/dio.dart';
 
 import 'position_monitor_test.dart' show FakeSocket, sklandResponder, token;
 import 'support/fake_adapter.dart';
@@ -29,6 +32,8 @@ void main() {
     expect(find.text('欢迎使用终末地坐标工具'), findsOneWidget);
     expect(find.text('token 管理'), findsNothing);
     expect(find.text('账号管理'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('请求速度'), 150, scrollable: find.byType(Scrollable).first);
+    expect(find.text('主动刷新坐标'), findsOneWidget);
 
     await tester.tap(find.text('蹭缝').last);
     await tester.pumpAndSettle();
@@ -36,9 +41,57 @@ void main() {
 
     await tester.tap(find.text('设置').last);
     await tester.pumpAndSettle();
+    expect(find.text('请求速度'), findsNothing);
     await tester.scrollUntilVisible(find.text('复制诊断信息'), 300, scrollable: find.byType(Scrollable).first);
     expect(find.text('使用帮助'), findsOneWidget);
     expect(find.text('复制诊断信息'), findsOneWidget);
+  });
+
+  testWidgets('浮窗期间暂缓更新提示，返回后提示一次，取消后不重复弹出', (tester) async {
+    final fw = await framework();
+    final base = AppServices.inMemory(fw.preferences, sklandAdapter: FakeAdapter(sklandResponder));
+    final updates = UpdateChecker(
+      currentVersion: 'v0.1.3',
+      dio: Dio()
+        ..httpClientAdapter = FakeAdapter(
+          (_) => FakeResponse.json({
+            'tag_name': 'v0.2.0',
+            'html_url': 'https://github.com/ZipField/zipliner-client/releases/tag/v0.2.0',
+          }),
+        ),
+    );
+    final overlay = DesktopOverlay(fw.preferences)..active = true;
+    final services = AppServices(
+      client: base.client,
+      skland: base.skland,
+      tokens: base.tokens,
+      monitor: base.monitor,
+      updates: updates,
+      overlay: overlay,
+      dataDirectory: base.dataDirectory,
+    );
+    await tester.pumpWidget(ZiplinerApp(framework: fw, services: services));
+    await tester.pump(const Duration(seconds: 3));
+    await tester.runAsync(() async {
+      await Future<void>.delayed(Duration.zero);
+    });
+    await tester.pumpAndSettle();
+    expect(updates.available?.version, 'v0.2.0');
+    expect(find.text('发现新版本 v0.2.0'), findsNothing);
+    overlay.active = false;
+    await overlay.refresh();
+    await tester.pumpAndSettle();
+    expect(find.text('发现新版本 v0.2.0'), findsOneWidget);
+    expect(find.text('去下载'), findsWidgets);
+    await tester.tap(find.text('以后再说'));
+    await tester.pumpAndSettle();
+    await tester.runAsync(updates.check);
+    await tester.pumpAndSettle();
+    expect(find.text('发现新版本 v0.2.0'), findsNothing);
+    await tester.pumpWidget(const SizedBox.shrink());
+    updates.dispose();
+    overlay.dispose();
+    base.dispose();
   });
 
   testWidgets('有账号时连接并显示坐标', (tester) async {

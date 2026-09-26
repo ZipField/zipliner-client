@@ -38,6 +38,25 @@ class PositionPage extends StatelessWidget {
             if (update != null) _UpdateBanner(update: update),
             if (!services.monitor.hasTokens) const _WelcomeCard(),
             _StatusSection(monitor: services.monitor),
+            TfSection(
+              title: '坐标同步',
+              children: [
+                const TfToggleSetting(
+                  key: PositionPrefs.requestPolling,
+                  title: '主动刷新坐标',
+                  subtitle: '关闭时仅接收服务器自动推送。',
+                ).build(context, prefs),
+                TfSliderSetting(
+                  key: PositionPrefs.requestIntervalSeconds,
+                  title: '请求速度',
+                  subtitle: '开启主动刷新后生效。间隔越小，请求越快；实际更新速度取决于服务器。',
+                  min: 0.2,
+                  max: 10,
+                  divisions: 98,
+                  format: (value) => '${value.toStringAsFixed(1)} 秒',
+                ).build(context, prefs),
+              ],
+            ),
             if (overlay != null) _OverlaySection(overlay: overlay, prefs: prefs),
             _CaptureSection(monitor: services.monitor, prefs: prefs),
           ],

@@ -5,7 +5,8 @@ import 'package:tf_framework/tf_framework.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../app.dart';
-import '../core/app_info.dart';
+import '../core/update_checker.dart';
+import '../desktop/desktop_overlay.dart';
 import '../core/services.dart';
 import '../position/position_monitor.dart';
 import '../position/position_prefs.dart';
@@ -41,12 +42,20 @@ class _HomeShellState extends State<HomeShell> {
     };
     if (Platform.isAndroid) monitor.addListener(_updateWakelock);
     WidgetsBinding.instance.addPostFrameCallback((_) => monitor.start());
-    // 正式版启动后静默检查一次更新，只在有新版本时提示。
-    if (AppInfo.isRelease) {
-      Future<void>.delayed(const Duration(seconds: 3), () {
-        if (mounted) checkForUpdates(context);
-      });
-    }
+    final services = AppServices.of(context);
+    _updates = services.updates..addListener(_showPendingUpdate);
+    _overlay = services.overlay;
+    _overlay?.addListener(_showPendingUpdate);
+    _updates!.startAutomaticChecks();
+  }
+
+  UpdateChecker? _updates;
+  DesktopOverlay? _overlay;
+
+  void _showPendingUpdate() {
+    final info = _updates?.available;
+    if (!mounted || info == null || _updates!.checking || _overlay?.active == true) return;
+    presentUpdatePrompt(context, info, automatic: true);
   }
 
   PositionMonitor? _monitor;
@@ -65,6 +74,8 @@ class _HomeShellState extends State<HomeShell> {
 
   @override
   void dispose() {
+    _updates?.removeListener(_showPendingUpdate);
+    _overlay?.removeListener(_showPendingUpdate);
     _monitor?.removeListener(_updateWakelock);
     super.dispose();
   }

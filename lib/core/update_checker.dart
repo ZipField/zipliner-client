@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
@@ -30,13 +32,30 @@ class UpdateChecker extends ChangeNotifier {
 
   UpdateInfo? available;
   bool checking = false;
+  bool promptOpen = false;
+  String? lastPromptedVersion;
+  bool _disposed = false;
+  Future<UpdateInfo?>? _pending;
+  Timer? _initialCheck;
+  Timer? _periodicCheck;
+
+  /// 启动后检查，长时间运行时每 6 小时检查；开发构建不访问网络。
+  void startAutomaticChecks() {
+    if (_disposed || _parse(currentVersion) == null || _periodicCheck != null) return;
+    _initialCheck = Timer(const Duration(seconds: 3), () => unawaited(check()));
+    _periodicCheck = Timer.periodic(const Duration(hours: 6), (_) => unawaited(check()));
+  }
 
   /// 上一次检查的结果描述，供设置页显示。
   String? lastResult;
 
   /// 返回可用的新版本；已是最新或检查失败返回 null。
-  Future<UpdateInfo?> check() async {
-    if (checking) return available;
+  Future<UpdateInfo?> check() {
+    if (_disposed) return Future.value(null);
+    return _pending ??= _check().whenComplete(() => _pending = null);
+  }
+
+  Future<UpdateInfo?> _check() async {
     checking = true;
     notifyListeners();
     try {
@@ -45,11 +64,17 @@ class UpdateChecker extends ChangeNotifier {
         options: Options(headers: {'Accept': 'application/vnd.github+json'}),
       );
       final data = response.data;
+      if (_disposed) return null;
       if (response.statusCode != 200 || data == null) {
         lastResult = response.statusCode == 404 ? '还没有发布版本' : '检查更新失败（${response.statusCode}）';
         return null;
       }
       final tag = data['tag_name']?.toString() ?? '';
+      if (data['draft'] == true || data['prerelease'] == true || _parse(tag) == null) {
+        lastResult = '没有可用的正式版本';
+        available = null;
+        return null;
+      }
       final url = data['html_url']?.toString() ?? AppInfo.releasesPage;
       if (isNewer(tag, currentVersion)) {
         available = UpdateInfo(version: tag, url: url, notes: data['body']?.toString());
@@ -65,7 +90,7 @@ class UpdateChecker extends ChangeNotifier {
       return null;
     } finally {
       checking = false;
-      notifyListeners();
+      if (!_disposed) notifyListeners();
     }
   }
 
@@ -81,8 +106,17 @@ class UpdateChecker extends ChangeNotifier {
   }
 
   static List<int>? _parse(String version) {
-    final match = RegExp(r'^v?(\d+)\.(\d+)\.(\d+)').firstMatch(version.trim());
+    final match = RegExp(r'^v?(\d+)\.(\d+)\.(\d+)(?:\+[0-9A-Za-z.-]+)?$').firstMatch(version.trim());
     if (match == null) return null;
     return [for (var i = 1; i <= 3; i++) int.parse(match.group(i)!)];
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    _initialCheck?.cancel();
+    _periodicCheck?.cancel();
+    _dio.close(force: true);
+    super.dispose();
   }
 }
