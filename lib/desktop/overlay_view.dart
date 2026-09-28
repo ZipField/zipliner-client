@@ -184,6 +184,18 @@ class _OverlayViewState extends State<OverlayView> {
           const SizedBox(height: 3),
         ],
         body,
+        if (toast != null || (follow && overlay.warning != null) || showHint) const SizedBox(height: 4),
+        if (toast != null)
+          Text(
+            '已识别滑索 ${toast.label}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: small.copyWith(color: follow ? const Color(0xFF8AB4F8) : colors.primary),
+          )
+        else if (follow && overlay.warning != null)
+          Text('未找到游戏窗口', maxLines: 1, style: small.copyWith(color: const Color(0xFFFFB4AB)))
+        else if (showHint)
+          Text('按 ${overlay.hotkeyLabel} 返回主界面', maxLines: 1, style: small),
         if (target != null) ...[
           const SizedBox(height: 5),
           Row(
@@ -211,18 +223,6 @@ class _OverlayViewState extends State<OverlayView> {
             ],
           ),
         ],
-        if (toast != null || (follow && overlay.warning != null) || showHint) const SizedBox(height: 4),
-        if (toast != null)
-          Text(
-            '已识别滑索 ${toast.label}',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: small.copyWith(color: follow ? const Color(0xFF8AB4F8) : colors.primary),
-          )
-        else if (follow && overlay.warning != null)
-          Text('未找到游戏窗口', maxLines: 1, style: small.copyWith(color: const Color(0xFFFFB4AB)))
-        else if (showHint)
-          Text('按 ${overlay.hotkeyLabel} 返回主界面', maxLines: 1, style: small),
       ],
     );
 
