@@ -22,6 +22,7 @@ class DesktopOverlay extends ChangeNotifier {
 
   static const normalSize = Size(208, 116);
   static const followSize = Size(190, 100);
+  static const _targetExtraHeight = 22.0;
   static const _followInterval = Duration(milliseconds: 500);
   static const _hideDelay = Duration(seconds: 1);
 
@@ -43,9 +44,15 @@ class DesktopOverlay extends ChangeNotifier {
 
   int get decimals => _prefs.get(PositionPrefs.overlayDecimals);
 
+  TargetCoordinate? get target => PositionPrefs.target(_prefs);
+
+  Size get baseSize {
+    final base = follow ? followSize : normalSize;
+    return target == null ? base : Size(base.width, base.height + _targetExtraHeight);
+  }
+
   Size get windowSize =>
-      (follow ? followSize : normalSize) *
-      (_prefs.get(PositionPrefs.overlayScale) * _prefs.get(TfPreferenceKeys.textScale));
+      baseSize * (_prefs.get(PositionPrefs.overlayScale) * _prefs.get(TfPreferenceKeys.textScale));
 
   String get hotkeyLabel => PositionPrefs.hotkeyOf(_prefs).label;
 

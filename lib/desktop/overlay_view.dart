@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:tf_framework/tf_framework.dart';
@@ -84,6 +85,15 @@ class _OverlayViewState extends State<OverlayView> {
     );
 
     final position = monitor.position;
+    final target = overlay.target;
+    final distance = target == null || position == null
+        ? null
+        : math.sqrt(
+            (position.x - target.x) * (position.x - target.x) +
+                (position.y - target.y) * (position.y - target.y) +
+                (position.z - target.z) * (position.z - target.z),
+          );
+
     Widget readout(double value) {
       final text = _coordinate(value, overlay.decimals);
       final dot = text.indexOf('.');
@@ -186,6 +196,33 @@ class _OverlayViewState extends State<OverlayView> {
           Text('未找到游戏窗口', maxLines: 1, style: small.copyWith(color: const Color(0xFFFFB4AB)))
         else if (showHint)
           Text('按 ${overlay.hotkeyLabel} 返回主界面', maxLines: 1, style: small),
+        if (target != null) ...[
+          const SizedBox(height: 5),
+          Row(
+            children: [
+              Text('目标', style: small.copyWith(fontWeight: FontWeight.w600)),
+              const SizedBox(width: 6),
+              Expanded(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    '(${_coordinate(target.x, overlay.decimals)}, ${_coordinate(target.y, overlay.decimals)}, ${_coordinate(target.z, overlay.decimals)})',
+                    style: mono.copyWith(fontSize: follow ? 9.5 : 9, fontWeight: FontWeight.w500),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                distance == null ? '-- m' : '${distance.toStringAsFixed(2)} m',
+                style: small.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: follow ? Colors.white : colors.primary,
+                ),
+              ),
+            ],
+          ),
+        ],
       ],
     );
 
@@ -215,7 +252,7 @@ class _OverlayViewState extends State<OverlayView> {
     Widget fitWindow(Widget child) => FittedBox(
       fit: BoxFit.contain,
       child: SizedBox.fromSize(
-        size: follow ? DesktopOverlay.followSize : DesktopOverlay.normalSize,
+        size: overlay.baseSize,
         child: MediaQuery.withNoTextScaling(child: child),
       ),
     );

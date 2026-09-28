@@ -373,12 +373,29 @@ class _OverlaySection extends StatelessWidget {
     await overlay.refresh();
   }
 
+  Future<void> _editTarget(BuildContext context) async {
+    final result = await showTfDialog<({bool clear, double x, double y, double z})>(
+      context,
+      title: '目标坐标',
+      content: _TargetCoordinateEditor(initial: PositionPrefs.target(prefs)),
+      actions: const [TfDialogAction(label: '取消')],
+    );
+    if (result == null) return;
+    if (result.clear) {
+      await PositionPrefs.clearTarget(prefs);
+    } else {
+      await PositionPrefs.setTarget(prefs, (x: result.x, y: result.y, z: result.z));
+    }
+    await overlay.refresh();
+  }
+
   @override
   Widget build(BuildContext context) {
     final hotkey = PositionPrefs.hotkeyOf(prefs);
     final follow = prefs.get(PositionPrefs.followGame);
     final position = PositionPrefs.position(prefs);
     final offset = PositionPrefs.offset(prefs, position);
+    final target = PositionPrefs.target(prefs);
     final warnings = [?overlay.hotkeyWarning, ?overlay.warning];
 
     Widget slider(String label, double value, bool negative, void Function(double) onChanged) => SectionBody(
@@ -411,6 +428,19 @@ class _OverlaySection extends StatelessWidget {
           leading: const Icon(Icons.picture_in_picture_alt_outlined),
           title: const Text('显示坐标窗口'),
           trailing: TfButton(label: '打开', onPressed: () => _open(context)),
+        ),
+        TfListTile(
+          leading: const Icon(Icons.flag_outlined),
+          title: const Text('目标坐标'),
+          subtitle: Text(
+            target == null
+                ? '未设置；设置后浮窗底部会显示目标和三维直线距离'
+                : 'X ${formatUpTo5(target.x)} · Y ${formatUpTo5(target.y)} · Z ${formatUpTo5(target.z)}\n浮窗底部实时显示三维直线距离',
+          ),
+          trailing: TfButton.secondary(
+            label: target == null ? '设置' : '修改',
+            onPressed: () => _editTarget(context),
+          ),
         ),
         TfListTile(
           leading: const Icon(Icons.keyboard_outlined),
@@ -458,6 +488,99 @@ class _OverlaySection extends StatelessWidget {
             child: TfBanner(type: TfToastType.warning, message: w),
           ),
       ],
+    );
+  }
+}
+
+class _TargetCoordinateEditor extends StatefulWidget {
+  const _TargetCoordinateEditor({required this.initial});
+
+  final TargetCoordinate? initial;
+
+  @override
+  State<_TargetCoordinateEditor> createState() => _TargetCoordinateEditorState();
+}
+
+class _TargetCoordinateEditorState extends State<_TargetCoordinateEditor> {
+  late final TextEditingController _x;
+  late final TextEditingController _y;
+  late final TextEditingController _z;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _x = TextEditingController(text: widget.initial == null ? '' : formatUpTo5(widget.initial!.x));
+    _y = TextEditingController(text: widget.initial == null ? '' : formatUpTo5(widget.initial!.y));
+    _z = TextEditingController(text: widget.initial == null ? '' : formatUpTo5(widget.initial!.z));
+  }
+
+  @override
+  void dispose() {
+    _x.dispose();
+    _y.dispose();
+    _z.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final x = double.tryParse(_x.text.trim());
+    final y = double.tryParse(_y.text.trim());
+    final z = double.tryParse(_z.text.trim());
+    if (x == null || y == null || z == null || !x.isFinite || !y.isFinite || !z.isFinite) {
+      setState(() => _error = 'X、Y、Z 都需要填写有效数字');
+      return;
+    }
+    Navigator.of(context).pop((clear: false, x: x, y: y, z: z));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    Widget field(String label, TextEditingController controller, {TextInputAction? action, VoidCallback? submitted}) =>
+        TextField(
+          controller: controller,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
+          textInputAction: action,
+          decoration: InputDecoration(labelText: label, border: const OutlineInputBorder()),
+          onSubmitted: submitted == null ? null : (_) => submitted(),
+        );
+
+    return SizedBox(
+      width: 420,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text('输入游戏内目标位置。保存后，坐标浮窗会实时计算当前位置到目标的三维直线距离。'),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(child: field('X', _x, action: TextInputAction.next)),
+              const SizedBox(width: 8),
+              Expanded(child: field('Y', _y, action: TextInputAction.next)),
+              const SizedBox(width: 8),
+              Expanded(child: field('Z', _z, action: TextInputAction.done, submitted: _save)),
+            ],
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: 8),
+            Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          ],
+          const SizedBox(height: 16),
+          Wrap(
+            alignment: WrapAlignment.end,
+            spacing: 8,
+            children: [
+              if (widget.initial != null)
+                TfButton.secondary(
+                  label: '清除目标',
+                  onPressed: () => Navigator.of(context).pop((clear: true, x: 0.0, y: 0.0, z: 0.0)),
+                ),
+              TfButton(label: '保存', icon: Icons.check, onPressed: _save),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
