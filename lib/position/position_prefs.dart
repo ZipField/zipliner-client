@@ -6,6 +6,8 @@ import 'package:tf_framework/tf_framework.dart';
 
 import 'follow_placement.dart';
 
+typedef TargetCoordinate = ({double x, double y, double z});
+
 /// 持久化的用户选项，存放在框架的偏好设置里。对应原工具的 `settings.json`。
 abstract final class PositionPrefs {
   static const requestPolling = TfPreferenceKey<bool>('position.requestPolling', defaultValue: false);
@@ -59,8 +61,41 @@ abstract final class PositionPrefs {
     validator: _validOverlayDecimals,
   );
 
+  /// 用户手动指定的导航目标；关闭时保留坐标，方便下次继续使用。
+  static const targetEnabled = TfPreferenceKey<bool>('position.target.enabled', defaultValue: false);
+  static const targetX = TfPreferenceKey<double>(
+    'position.target.x',
+    defaultValue: 0,
+    validator: _validTargetCoordinate,
+  );
+  static const targetY = TfPreferenceKey<double>(
+    'position.target.y',
+    defaultValue: 0,
+    validator: _validTargetCoordinate,
+  );
+  static const targetZ = TfPreferenceKey<double>(
+    'position.target.z',
+    defaultValue: 0,
+    validator: _validTargetCoordinate,
+  );
+
   static bool _validOverlayScale(double value) => const [1.0, 1.2, 1.4].contains(value);
   static bool _validOverlayDecimals(int value) => const [0, 3, 5].contains(value);
+  static bool _validTargetCoordinate(double value) => value.isFinite;
+
+  static TargetCoordinate? target(TfPreferencesController prefs) {
+    if (!prefs.get(targetEnabled)) return null;
+    return (x: prefs.get(targetX), y: prefs.get(targetY), z: prefs.get(targetZ));
+  }
+
+  static Future<void> setTarget(TfPreferencesController prefs, TargetCoordinate target) async {
+    await prefs.set(targetX, target.x);
+    await prefs.set(targetY, target.y);
+    await prefs.set(targetZ, target.z);
+    await prefs.set(targetEnabled, true);
+  }
+
+  static Future<void> clearTarget(TfPreferencesController prefs) => prefs.set(targetEnabled, false);
 
   static FollowPosition position(TfPreferencesController prefs) => FollowPosition.parse(prefs.get(followPosition));
 
