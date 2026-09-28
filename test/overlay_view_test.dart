@@ -60,6 +60,24 @@ void main() {
         await overlay.refresh();
         await tester.pumpAndSettle();
         expect(find.text('-123456.78912'), findsOneWidget);
+
+        final heightWithoutTarget = overlay.windowSize.height;
+        await PositionPrefs.setTarget(
+          fw.preferences,
+          (x: -123453.78912, y: 3.99999, z: 44.125),
+        );
+        await overlay.refresh();
+        await tester.pumpAndSettle();
+        expect(overlay.windowSize.height, greaterThan(heightWithoutTarget));
+        expect(find.text('目标'), findsOneWidget);
+        expect(find.text('13.00 m'), findsOneWidget);
+        expect(find.textContaining('-123453.78912'), findsOneWidget);
+
+        await PositionPrefs.clearTarget(fw.preferences);
+        await overlay.refresh();
+        await tester.pumpAndSettle();
+        expect(find.text('目标'), findsNothing);
+
         services.monitor.position = null;
         services.monitor.status = '等待坐标';
         await fw.preferences.set(PositionPrefs.overlayDecimals, 0);
