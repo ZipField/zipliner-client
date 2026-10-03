@@ -107,6 +107,8 @@ class DesktopOverlay extends ChangeNotifier {
     _busy = true;
     try {
       _stopFollow();
+      // 退出浮窗时沿用当前小窗位置，但恢复尺寸仍使用进入浮窗前的大窗尺寸。
+      final currentBounds = _native.isSupported ? _native.rect : await windowManager.getBounds();
       active = false;
       warning = null;
       notifyListeners();
@@ -116,7 +118,10 @@ class DesktopOverlay extends ChangeNotifier {
       await windowManager.setResizable(true);
       final saved = _savedBounds;
       if (saved != null) {
-        _native.isSupported ? _native.setRect(saved) : await windowManager.setBounds(saved);
+        final restored = currentBounds == null
+            ? saved
+            : Rect.fromLTWH(currentBounds.left, currentBounds.top, saved.width, saved.height);
+        _native.isSupported ? _native.setRect(restored) : await windowManager.setBounds(restored);
       }
       await windowManager.show();
       await windowManager.focus();
