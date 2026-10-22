@@ -18,7 +18,13 @@ abstract final class WsMessageType {
 }
 
 class PositionMessage {
-  const PositionMessage(this.type, {this.position, this.mapId, this.levelId, this.error});
+  const PositionMessage(
+    this.type, {
+    this.position,
+    this.mapId,
+    this.levelId,
+    this.error,
+  });
 
   final int type;
   final PositionSnapshot? position;
@@ -38,26 +44,39 @@ class PositionMessage {
         case WsMessageType.heartbeatAck:
           return PositionMessage(type);
         case WsMessageType.position:
-          if (data is! Map || data['pos'] is! Map) return const PositionMessage(0);
+          if (data is! Map || data['pos'] is! Map) {
+            return const PositionMessage(0);
+          }
           final pos = data['pos'] as Map;
           return PositionMessage(
             type,
-            position: PositionSnapshot(_num(pos['x']), _num(pos['y']), _num(pos['z'])),
+            position: PositionSnapshot(
+              _num(pos['x']),
+              _num(pos['y']),
+              _num(pos['z']),
+            ),
             mapId: data['mapId']?.toString(),
             levelId: data['levelId']?.toString(),
           );
         case WsMessageType.remoteClose:
-          final code = data is Map && data.containsKey('code') ? jsonEncode(data['code']) : null;
+          final code = data is Map && data.containsKey('code')
+              ? jsonEncode(data['code'])
+              : null;
           final message = data is Map ? data['message']?.toString() : null;
           return PositionMessage(
             type,
-            error: code != null ? '服务器关闭连接（code=$code）：${message ?? '无消息'}' : (message ?? 'WebSocket 已关闭'),
+            error: code != null
+                ? '服务器关闭连接（code=$code）：${message ?? '无消息'}'
+                : (message ?? 'WebSocket 已关闭'),
           );
         default:
           return PositionMessage(type);
       }
     } catch (_) {
-      return const PositionMessage(WsMessageType.remoteClose, error: '收到无效的 WebSocket 消息');
+      return const PositionMessage(
+        WsMessageType.remoteClose,
+        error: '收到无效的 WebSocket 消息',
+      );
     }
   }
 
@@ -67,7 +86,11 @@ class PositionMessage {
   }
 }
 
-typedef PositionCallback = void Function(PositionSnapshot position, String? mapId, String? levelId);
+typedef PositionCallback = void Function(
+  PositionSnapshot position,
+  String? mapId,
+  String? levelId,
+);
 
 /// 连接 `wss://ws.skland.com/ws/v1/game/endfield/map` 并推送坐标。
 class PositionSocket {
@@ -76,44 +99,23 @@ class PositionSocket {
   static const path = '/ws/v1/game/endfield/map';
   static const initialPositionTimeout = Duration(seconds: 4);
   static const heartbeatInterval = Duration(seconds: 10);
-  static const _msgIdChars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  static const _msgIdChars =
+      'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 
   /// 测试可替换的连接工厂。
-  final Future<WebSocket> Function(String url, Map<String, String> headers)? connector;
+  final Future<WebSocket> Function(String url, Map<String, String> headers)?
+  connector;
 
   WebSocket? _socket;
   bool _cancelled = false;
-  Duration _requestInterval = Duration.zero;
-  Timer? _requestTimer;
-  void Function()? _requestPosition;
+  void Function(String?)? _finish;
 
-  static void validateRequestInterval(Duration value) {
-    if (value != Duration.zero && (value < const Duration(milliseconds: 200) || value > const Duration(seconds: 10))) {
-      throw ArgumentError.value(value, 'requestInterval', '必须为 0 或 0.2–10 秒');
+  static Future<void> _closeSocket(WebSocket socket) async {
+    try {
+      await socket.close().timeout(const Duration(seconds: 1));
+    } catch (_) {
+      // A missing peer close handshake must not block application shutdown.
     }
-  }
-
-  /// 调整实际发出的 1011 刷新请求；不改变心跳或丢弃服务端推送。
-  Duration get requestInterval => _requestInterval;
-  set requestInterval(Duration value) {
-    validateRequestInterval(value);
-    if (_requestInterval == value) return;
-    _requestInterval = value;
-    _rescheduleRequests();
-  }
-
-  void _rescheduleRequests() {
-    _requestTimer?.cancel();
-    _requestTimer = null;
-    if (_requestPosition != null && _requestInterval > Duration.zero) {
-      _requestTimer = Timer.periodic(_requestInterval, (_) => _requestPosition?.call());
-    }
-  }
-
-  void _stopRequests() {
-    _requestTimer?.cancel();
-    _requestTimer = null;
-    _requestPosition = null;
   }
 
   /// 运行直到断开，返回断开原因；调用 [close] 主动断开时返回 null。
@@ -125,7 +127,6 @@ class PositionSocket {
     void Function()? onSubscribed,
     String? language,
   }) async {
-    _stopRequests();
     _cancelled = false;
     final headers = {'sk-language': ?SklandClient.skLanguage(region, language)};
     final url = SklandClient.wsUrl(region) + path;
@@ -136,7 +137,7 @@ class PositionSocket {
       return _cancelled ? null : '无法连接到定位服务';
     }
     if (_cancelled) {
-      await socket.close();
+      await _closeSocket(socket);
       return null;
     }
     _socket = socket..pingInterval = const Duration(seconds: 15);
@@ -150,10 +151,11 @@ class PositionSocket {
       if (done.isCompleted) return;
       initialTimer?.cancel();
       heartbeat?.cancel();
-      _stopRequests();
       done.complete(_cancelled ? null : reason);
-      socket.close();
+      unawaited(_closeSocket(socket));
     }
+
+    _finish = finish;
 
     socket.add(_message(WsMessageType.auth, {'token': websocketToken}));
     final subscription = socket.listen(
@@ -165,18 +167,19 @@ class PositionSocket {
         final message = PositionMessage.parse(event);
         if (message.type == WsMessageType.authAck && !subscribed) {
           subscribed = true;
-          socket.add(_message(WsMessageType.subscribe, {'roleId': role.roleId, 'serverId': role.serverId}));
-          _requestPosition = () {
-            try {
-              socket.add(_message(WsMessageType.subscribe, {'roleId': role.roleId, 'serverId': role.serverId}));
-            } catch (_) {
-              finish('WebSocket 连接已断开');
-            }
-          };
-          _rescheduleRequests();
-          initialTimer = Timer(initialPositionTimeout, () => finish('角色不在线（未收到坐标）'));
+          socket.add(
+            _message(WsMessageType.subscribe, {
+              'roleId': role.roleId,
+              'serverId': role.serverId,
+            }),
+          );
+          initialTimer = Timer(
+            initialPositionTimeout,
+            () => finish('角色不在线（未收到坐标）'),
+          );
           onSubscribed?.call();
-        } else if (message.type == WsMessageType.position && message.position != null) {
+        } else if (message.type == WsMessageType.position &&
+            message.position != null) {
           initialTimer?.cancel();
           onPosition(message.position!, message.mapId, message.levelId);
           heartbeat ??= Timer.periodic(heartbeatInterval, (_) {
@@ -197,18 +200,23 @@ class PositionSocket {
 
     final reason = await done.future;
     await subscription.cancel();
+    _finish = null;
     _socket = null;
     return reason;
   }
 
   Future<void> close() async {
     _cancelled = true;
-    _stopRequests();
-    await _socket?.close();
+    _finish?.call(null);
+    final socket = _socket;
+    if (socket != null) await _closeSocket(socket);
   }
 
   static Future<WebSocket> _connect(String url, Map<String, String> headers) =>
-      WebSocket.connect(url, headers: headers).timeout(const Duration(seconds: 20));
+      WebSocket.connect(
+        url,
+        headers: headers,
+      ).timeout(const Duration(seconds: 20));
 
   static String _message(int type, Map<String, Object?> data) =>
       jsonEncode({'type': type, 'data': data, 'msgId': createMsgId()});
@@ -216,7 +224,10 @@ class PositionSocket {
   static String createMsgId() {
     final random = Random.secure();
     return String.fromCharCodes(
-      List.generate(8, (_) => _msgIdChars.codeUnitAt(random.nextInt(256) % _msgIdChars.length)),
+      List.generate(
+        8,
+        (_) => _msgIdChars.codeUnitAt(random.nextInt(256) % _msgIdChars.length),
+      ),
     );
   }
 }

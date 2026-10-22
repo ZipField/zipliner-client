@@ -3,7 +3,8 @@ enum SklandRegion {
   skland,
   skport;
 
-  static SklandRegion parse(String? value) => value?.trim().toLowerCase() == 'skport' ? skport : skland;
+  static SklandRegion parse(String? value) =>
+      value?.trim().toLowerCase() == 'skport' ? skport : skland;
 
   bool get isSkport => this == skport;
 
@@ -11,12 +12,18 @@ enum SklandRegion {
 
   /// 与后端 `SklandService.ResolveRegionByServerId` 一致：只有服务器 `1` 属于国服。
   static SklandRegion fromServerId(String? serverId) =>
-      (serverId == null || serverId.trim().isEmpty || serverId.trim() == '1') ? skland : skport;
+      (serverId == null || serverId.trim().isEmpty || serverId.trim() == '1')
+      ? skland
+      : skport;
 }
 
 /// `generate_cred_by_code` 的结果；`token` 用于请求签名。
 class CredentialResult {
-  const CredentialResult({required this.cred, required this.userId, required this.token});
+  const CredentialResult({
+    required this.cred,
+    required this.userId,
+    required this.token,
+  });
 
   final String cred;
   final String userId;
@@ -24,7 +31,13 @@ class CredentialResult {
 }
 
 class RoleBinding {
-  const RoleBinding({required this.serverId, required this.roleId, this.nickname, this.channelName, this.level});
+  const RoleBinding({
+    required this.serverId,
+    required this.roleId,
+    this.nickname,
+    this.channelName,
+    this.level,
+  });
 
   final String serverId;
   final String roleId;
@@ -33,18 +46,33 @@ class RoleBinding {
   final int? level;
 
   String get displayName {
-    final name = (nickname == null || nickname!.trim().isEmpty) ? roleId : nickname!;
-    return (channelName == null || channelName!.trim().isEmpty) ? name : '$channelName - $name';
+    final name = (nickname == null || nickname!.trim().isEmpty)
+        ? roleId
+        : nickname!;
+    return (channelName == null || channelName!.trim().isEmpty)
+        ? name
+        : '$channelName - $name';
   }
 }
 
 /// 一个 token 下的一个角色，`key` 用于在重连后恢复选择。
 class RoleSession {
-  const RoleSession({required this.tokenId, required this.region, required this.credential, required this.binding});
+  const RoleSession({
+    required this.tokenId,
+    required this.region,
+    this._credential,
+    required this.binding,
+    this.gameAccountId,
+  });
 
   final String tokenId;
   final SklandRegion region;
-  final CredentialResult credential;
+  final CredentialResult? _credential;
+  final String? gameAccountId;
+  bool get hasLocalCredential => _credential != null;
+  CredentialResult get credential =>
+      _credential ??
+      (throw const SklandException('当前角色使用 Zipliner 定位，未在本机保存森空岛凭据。'));
   final RoleBinding binding;
 
   String get key => '$tokenId:${binding.serverId}:${binding.roleId}';

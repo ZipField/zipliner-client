@@ -37,7 +37,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
       size = Win32Window::Size(w, h);
     }
   }
-  if (!window.Create(L"\u7EC8\u672B\u5730\u5750\u6807\u5DE5\u5177", origin, size)) {
+  if (!window.Create(L"Zipliner Client", origin, size)) {
     return EXIT_FAILURE;
   }
   window.SetQuitOnClose(true);

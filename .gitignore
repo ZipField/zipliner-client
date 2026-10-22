@@ -50,6 +50,11 @@ app.*.map.json
 # Local references (private backend API snapshots), never published
 .ref/
 
+# Generated Windows network helper artifacts
+/network_helper/build/
+/network_helper/dist/
+**/__pycache__/
+
 # Signing material
 *.jks
 *.keystore

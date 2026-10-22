@@ -46,6 +46,7 @@ jobs:
       - run: flutter pub get
       - run: flutter analyze
       - run: flutter test
+      - run: python3 -m unittest discover -s network_helper -p 'test_*.py'
 
   windows:
     name: Windows x64
@@ -55,12 +56,21 @@ jobs:
       VERSION: ${{ needs.meta.outputs.version }}
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
       - run: flutter pub get
+      - name: Build network helper
+        shell: pwsh
+        run: |
+          python -m pip install -r network_helper/requirements.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Network helper dependencies failed' }
+          ./network_helper/build.ps1
       - name: Build
         run: >-
           flutter build windows --release
@@ -77,6 +87,12 @@ jobs:
           }
           Copy-Item "packaging/windows/README.txt" "$bundle/使用说明.txt"
           Copy-Item LICENSE "$bundle/LICENSE.txt"
+          New-Item -ItemType Directory -Force "$bundle/network" | Out-Null
+          Get-ChildItem 'network_helper/dist/ZiplinerNetworkHelper' -Force | Copy-Item -Recurse -Destination "$bundle/network/"
+          Copy-Item 'network_helper/dist/THIRD_PARTY.txt' "$bundle/network/"
+          Copy-Item -Recurse 'network_helper/dist/licenses' "$bundle/network/licenses"
+          New-Item -ItemType Directory -Force "$bundle/network/source" | Out-Null
+          Get-ChildItem network_helper -File | Copy-Item -Destination "$bundle/network/source/"
           $name = "zipliner-client-$env:VERSION-windows-x64"
           New-Item -ItemType Directory -Force dist | Out-Null
           Rename-Item $bundle $name
@@ -152,6 +168,10 @@ jobs:
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           if [[ -z "$KEYSTORE_BASE64" ]]; then
+            if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+              echo "::error::正式发布缺少 ANDROID_KEYSTORE_BASE64，拒绝使用临时签名发布无法稳定升级的 APK。"
+              exit 1
+            fi
             echo "::warning::未配置 ANDROID_KEYSTORE_BASE64，APK 将使用临时 debug 签名，用户无法覆盖安装升级。"
             exit 0
           fi
@@ -198,6 +218,5 @@ jobs:
         run: |
           sed "s/{{VERSION}}/${VERSION}/g" packaging/release-notes.md > notes.md
           gh release create "$VERSION" dist/* \
-            --title "终末地坐标工具 ${VERSION}" \
-            --notes-file notes.md \
-            --generate-notes
+            --title "Zipliner Client ${VERSION}" \
+            --notes-file notes.md

@@ -131,7 +131,7 @@ void main() {
     test('业务错误使用服务端 msg，HTTP 错误返回状态码', () async {
       final bad = _client(FakeAdapter((_) => FakeResponse.json({'status': 1, 'msg': '密码错误'})));
       await expectLater(
-        bad.phonePasswordLogin('13800000000', 'x'),
+        bad.emailPasswordLogin('player@example.com', 'x'),
         throwsA(isA<SklandException>().having((e) => e.message, 'message', '密码错误')),
       );
       final down = _client(FakeAdapter((_) => FakeResponse.text('', status: 502)));

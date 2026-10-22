@@ -1,3 +1,5 @@
+import '../account/account_profile_card.dart';
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -9,6 +11,7 @@ import '../core/services.dart';
 import '../core/update_checker.dart';
 import '../desktop/desktop_overlay.dart';
 import '../desktop/global_hotkey.dart';
+import '../desktop/game_window_picker.dart';
 import '../position/follow_placement.dart';
 import '../position/formatting.dart';
 import '../position/friendly_error.dart';
@@ -27,37 +30,28 @@ class PositionPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final services = AppServices.of(context);
+    unawaited(services.mapNames.load());
     final prefs = TfFramework.of(context).preferences;
     final overlay = services.overlay;
     return ListenableBuilder(
-      listenable: Listenable.merge([services.monitor, prefs, services.updates, ?overlay]),
+      listenable: Listenable.merge([
+        services.monitor,
+        ?services.accounts,
+        services.mapNames,
+        prefs,
+        services.updates,
+        ?overlay,
+      ]),
       builder: (context, _) {
         final update = services.updates.available;
         return TfListView(
           children: [
+            const AccountProfileCard(),
             if (update != null) _UpdateBanner(update: update),
             if (!services.monitor.hasTokens) const _WelcomeCard(),
             _StatusSection(monitor: services.monitor),
-            TfSection(
-              title: '坐标同步',
-              children: [
-                const TfToggleSetting(
-                  key: PositionPrefs.requestPolling,
-                  title: '主动刷新坐标',
-                  subtitle: '关闭时仅接收服务器自动推送。',
-                ).build(context, prefs),
-                TfSliderSetting(
-                  key: PositionPrefs.requestIntervalSeconds,
-                  title: '请求速度',
-                  subtitle: '开启主动刷新后生效。间隔越小，请求越快；实际更新速度取决于服务器。',
-                  min: 0.2,
-                  max: 10,
-                  divisions: 98,
-                  format: (value) => '${value.toStringAsFixed(1)} 秒',
-                ).build(context, prefs),
-              ],
-            ),
-            if (overlay != null) _OverlaySection(overlay: overlay, prefs: prefs),
+            if (overlay != null)
+              _OverlaySection(overlay: overlay, prefs: prefs),
             _CaptureSection(monitor: services.monitor, prefs: prefs),
           ],
         );
@@ -69,14 +63,19 @@ class PositionPage extends StatelessWidget {
 Future<void> _copy(BuildContext context, String text) async {
   try {
     await Clipboard.setData(ClipboardData(text: text));
-    if (context.mounted) showTfToast(context, '已复制到剪贴板', type: TfToastType.success);
+    if (context.mounted) {
+      showTfToast(context, '已复制到剪贴板', type: TfToastType.success);
+    }
   } catch (_) {
-    if (context.mounted) showTfToast(context, '复制失败，剪贴板可能正被其他程序占用，请稍后重试', type: TfToastType.error);
+    if (context.mounted) {
+      showTfToast(context, '复制失败，剪贴板可能正被其他程序占用，请稍后重试', type: TfToastType.error);
+    }
   }
 }
 
 void _openAccounts(BuildContext context) =>
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AccountManagerPage()));
+    Navigator.of(context)
+        .push(MaterialPageRoute(builder: (_) => const AccountManagerPage()));
 
 class _UpdateBanner extends StatelessWidget {
   const _UpdateBanner({required this.update});
@@ -89,9 +88,14 @@ class _UpdateBanner extends StatelessWidget {
       children: [
         const Icon(Icons.new_releases_outlined),
         const SizedBox(width: 12),
-        Expanded(child: Text('发现新版本 ${update.version}，下载后解压覆盖旧文件即可，账号和设置都会保留。')),
+        Expanded(
+          child: Text('发现新版本 ${update.version}，下载后解压覆盖旧文件即可，账号和设置都会保留。'),
+        ),
         const SizedBox(width: 12),
-        TfButton(label: '去下载', onPressed: () => launchUrl(Uri.parse(update.url))),
+        TfButton(
+          label: '去下载',
+          onPressed: () => launchUrl(Uri.parse(update.url)),
+        ),
       ],
     ),
   );
@@ -110,7 +114,12 @@ class _WelcomeCard extends StatelessWidget {
         CircleAvatar(
           radius: 12,
           backgroundColor: theme.colorScheme.primaryContainer,
-          child: Text('$n', style: theme.textTheme.labelMedium?.copyWith(color: theme.colorScheme.onPrimaryContainer)),
+          child: Text(
+            '$n',
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: theme.colorScheme.onPrimaryContainer,
+            ),
+          ),
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -129,7 +138,7 @@ class _WelcomeCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         spacing: 12,
         children: [
-          Text('欢迎使用终末地坐标工具', style: theme.textTheme.titleMedium),
+          Text('欢迎使用Zipliner Client', style: theme.textTheme.titleMedium),
           step(1, '登录森空岛账号', '推荐用森空岛 App 扫码，国际服选 SKPort。'),
           step(2, '打开位置同步', '工具会检测并提示你一键开启，也可以在森空岛地图工具右下角打开。'),
           step(3, '进入游戏', '登录对应角色后坐标会自动显示，断线会自动重连。'),
@@ -137,11 +146,16 @@ class _WelcomeCard extends StatelessWidget {
             spacing: 8,
             runSpacing: 8,
             children: [
-              TfButton(label: '登录森空岛账号', icon: Icons.login, onPressed: () => addAccount(context)),
+              TfButton(
+                label: '登录森空岛账号',
+                icon: Icons.login,
+                onPressed: () => addAccount(context),
+              ),
               TfButton.text(
                 label: '使用帮助',
                 icon: Icons.help_outline,
-                onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const HelpPage())),
+                onPressed: () => Navigator.of(context)
+                    .push(MaterialPageRoute(builder: (_) => const HelpPage())),
               ),
             ],
           ),
@@ -165,7 +179,9 @@ class _StatusSection extends StatelessWidget {
           TfSheetAction(
             label: '${role.displayName}（服务器 ${role.binding.serverId}）',
             value: role.key,
-            icon: role.key == monitor.activeRole?.key ? Icons.check : Icons.person_outline,
+            icon: role.key == monitor.activeRole?.key
+                ? Icons.check
+                : Icons.person_outline,
           ),
       ],
     );
@@ -194,7 +210,9 @@ class _StatusSection extends StatelessWidget {
         final target = accounts.where((a) => failed.contains(a.id)).toList();
         if (!context.mounted) return;
         // 只有一个失效账号时直接打开重新登录，多个时让用户在账号管理里选择。
-        target.length == 1 ? await reloginAccount(context, target.single) : _openAccounts(context);
+        target.length == 1
+            ? await reloginAccount(context, target.single)
+            : _openAccounts(context);
       case FixAction.agreePolicy:
         await _agreePolicy(context);
       case FixAction.reconnect:
@@ -223,61 +241,88 @@ class _StatusSection extends StatelessWidget {
         ? (Icons.check_circle, Colors.green)
         : (Icons.radio_button_unchecked, scheme.onSurfaceVariant);
 
-    final title = problem?.title ?? (monitor.status.isEmpty ? '正在连接...' : monitor.status);
-    final subtitle = [if (retryIn != null) '$retryIn 秒后自动重连', ?monitor.warning].join('\n');
+    final title =
+        problem?.title ?? (monitor.status.isEmpty ? '正在连接...' : monitor.status);
+    final subtitle = [
+      if (retryIn != null) '$retryIn 秒后自动重连',
+      ?monitor.warning,
+    ].join('\n');
 
     return TfSection(
       title: '状态',
       children: [
         TfListTile(
-          leading: monitor.isConnecting ? const TfProgress.circular() : Icon(icon, color: color),
+          leading: monitor.isConnecting
+              ? const TfProgress.circular()
+              : Icon(icon, color: color),
           title: Text(title),
+          trailing: TfButton.text(
+            label: '重新连接',
+            onPressed: monitor.isConnecting ? null : monitor.start,
+          ),
           subtitle: subtitle.isEmpty
               ? null
-              : Text(subtitle, style: TextStyle(color: monitor.warning != null ? scheme.error : null)),
+              : Text(
+                  subtitle,
+                  style: TextStyle(
+                    color: monitor.warning != null ? scheme.error : null,
+                  ),
+                ),
         ),
         if (problem?.hint != null)
           SectionBody(
-            child: TfBanner(type: problem!.retryable ? TfToastType.info : TfToastType.warning, message: problem.hint!),
+            child: TfBanner(
+              type: problem!.retryable ? TfToastType.info : TfToastType.warning,
+              message: problem.hint!,
+            ),
           ),
         _CoordinateReadout(monitor: monitor),
         TfListTile(
           leading: const Icon(Icons.person_outline),
           title: const Text('角色'),
-          subtitle: Text(role == null ? '未选择' : '${role.displayName} · 服务器 ${role.binding.serverId}'),
-          trailing: monitor.roles.length > 1 ? const Icon(Icons.chevron_right) : null,
-          onTap: monitor.roles.length > 1 && !monitor.isConnecting ? () => _chooseRole(context) : null,
+          subtitle: Text(
+            role == null
+                ? '未选择'
+                : '${role.displayName} · 服务器 ${role.binding.serverId}',
+          ),
+          trailing: monitor.roles.length > 1
+              ? const Icon(Icons.chevron_right)
+              : null,
+          onTap: monitor.roles.length > 1 && !monitor.isConnecting
+              ? () => _chooseRole(context)
+              : null,
         ),
         TfListTile(
           leading: const Icon(Icons.map_outlined),
           title: const Text('地图'),
           subtitle: Text(
-            monitor.mapId == null ? '等待坐标同步' : [monitor.mapId, ?monitor.levelId].join(' / '),
-            style: AppFonts.monoStyle(theme.textTheme.bodyMedium),
+            AppServices.of(context).mapNames
+                .label(monitor.mapId, monitor.levelId),
+            style: theme.textTheme.bodyMedium,
           ),
         ),
-        SectionBody(
-          child: Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              if (!monitor.hasTokens)
-                TfButton(label: '登录', icon: Icons.login, onPressed: () => addAccount(context))
-              else if (problem?.action != null && problem!.action != FixAction.reconnect)
-                TfButton(label: _fixLabel(problem.action!), onPressed: () => _fix(context, problem.action!)),
-              TfButton.secondary(
-                label: retryIn != null ? '立即重连' : '重新连接',
-                icon: Icons.refresh,
-                onPressed: monitor.isConnecting ? null : monitor.start,
-              ),
-              TfButton.secondary(
-                label: '账号管理',
-                icon: Icons.manage_accounts_outlined,
-                onPressed: monitor.isConnecting ? null : () => _openAccounts(context),
-              ),
-            ],
+        if (!monitor.hasTokens ||
+            (problem?.action != null && problem!.action != FixAction.reconnect))
+          SectionBody(
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                if (!monitor.hasTokens)
+                  TfButton(
+                    label: '登录',
+                    icon: Icons.login,
+                    onPressed: () => addAccount(context),
+                  )
+                else if (problem?.action != null &&
+                    problem!.action != FixAction.reconnect)
+                  TfButton(
+                    label: _fixLabel(problem.action!),
+                    onPressed: () => _fix(context, problem.action!),
+                  ),
+              ],
+            ),
           ),
-        ),
       ],
     );
   }
@@ -293,7 +338,9 @@ class _CoordinateReadout extends StatelessWidget {
     final theme = Theme.of(context);
     final position = monitor.position;
     final valueStyle = AppFonts.monoStyle(theme.textTheme.headlineSmall);
-    final labelStyle = theme.textTheme.labelLarge?.copyWith(color: theme.colorScheme.onSurfaceVariant);
+    final labelStyle = theme.textTheme.labelLarge?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
     Widget cell(String name, double? value) => Expanded(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -303,17 +350,29 @@ class _CoordinateReadout extends StatelessWidget {
           FittedBox(
             fit: BoxFit.scaleDown,
             alignment: Alignment.centerLeft,
-            child: Text(value == null ? '-' : formatUpTo5(value), style: valueStyle),
+            child: Text(
+              value == null ? '-' : formatUpTo5(value),
+              style: valueStyle,
+            ),
           ),
         ],
       ),
     );
-    return SectionBody(child: Row(children: [cell('X', position?.x), cell('Y', position?.y), cell('Z', position?.z)]));
+    return SectionBody(
+      child: Row(
+        children: [
+          cell('X', position?.x),
+          cell('Y', position?.y),
+          cell('Z', position?.z),
+        ],
+      ),
+    );
   }
 }
 
 /// 主页读数不需要原工具的对齐空格，只保留最多 5 位小数。
-String formatUpTo5(double value) => formatCoordinate(value).trim().replaceFirst(RegExp(r'\.$'), '');
+String formatUpTo5(double value) =>
+    formatCoordinate(value).trim().replaceFirst(RegExp(r'\.$'), '');
 
 class _OverlaySection extends StatelessWidget {
   const _OverlaySection({required this.overlay, required this.prefs});
@@ -339,7 +398,7 @@ class _OverlaySection extends StatelessWidget {
     overlay.registerHotkey();
   }
 
-  /// 第一次打开时先说明怎么回到主界面，避免用户以为程序“变小了回不去”。
+  /// 坐标窗独立显示，主界面始终保留。
   Future<void> _open(BuildContext context) async {
     if (!prefs.get(PositionPrefs.overlayHintShown)) {
       final hotkey = PositionPrefs.hotkeyOf(prefs).label;
@@ -348,9 +407,9 @@ class _OverlaySection extends StatelessWidget {
         context,
         title: '坐标窗口怎么用',
         message:
-            '打开后主界面会隐藏，变成一个置顶的小坐标窗，可以拖动。\n\n'
-            '回到主界面：按 $hotkey，或点小窗右上角的按钮。'
-            '${follow ? '\n\n已开启“跟随游戏窗口”：小窗会贴在游戏窗口上并且鼠标可以穿透，这时只能按 $hotkey 返回。' : ''}',
+            '打开独立的坐标小窗，主界面仍然保留，可从任务栏打开。\n\n'
+            '按 $hotkey 显示或隐藏坐标窗。'
+            '${follow ? '\n\n已开启“跟随游戏窗口”：坐标窗会贴在游戏窗口上，鼠标可以穿透。' : '\n\n可以拖动小窗调整位置。'}',
         buttonLabel: '知道了',
       );
       await prefs.set(PositionPrefs.overlayHintShown, true);
@@ -365,7 +424,11 @@ class _OverlaySection extends StatelessWidget {
       title: '显示位置',
       actions: [
         for (final p in FollowPosition.values)
-          TfSheetAction(label: p.label, value: p, icon: p == current ? Icons.check : null),
+          TfSheetAction(
+            label: p.label,
+            value: p,
+            icon: p == current ? Icons.check : null,
+          ),
       ],
     );
     if (chosen == null) return;
@@ -374,17 +437,24 @@ class _OverlaySection extends StatelessWidget {
   }
 
   Future<void> _editTarget(BuildContext context) async {
-    final result = await showTfDialog<({bool clear, double x, double y, double z})>(
-      context,
-      title: '目标坐标',
-      content: _TargetCoordinateEditor(initial: PositionPrefs.target(prefs)),
-      actions: const [TfDialogAction(label: '取消')],
-    );
+    final result =
+        await showTfDialog<({bool clear, double x, double y, double z})>(
+          context,
+          title: '目标坐标',
+          content: _TargetCoordinateEditor(
+            initial: PositionPrefs.target(prefs),
+          ),
+          actions: const [TfDialogAction(label: '取消')],
+        );
     if (result == null) return;
     if (result.clear) {
       await PositionPrefs.clearTarget(prefs);
     } else {
-      await PositionPrefs.setTarget(prefs, (x: result.x, y: result.y, z: result.z));
+      await PositionPrefs.setTarget(prefs, (
+        x: result.x,
+        y: result.y,
+        z: result.z,
+      ));
     }
     await overlay.refresh();
   }
@@ -398,7 +468,12 @@ class _OverlaySection extends StatelessWidget {
     final target = PositionPrefs.target(prefs);
     final warnings = [?overlay.hotkeyWarning, ?overlay.warning];
 
-    Widget slider(String label, double value, bool negative, void Function(double) onChanged) => SectionBody(
+    Widget slider(
+      String label,
+      double value,
+      bool negative,
+      void Function(double) onChanged,
+    ) => SectionBody(
       vertical: 4,
       child: Row(
         children: [
@@ -414,7 +489,11 @@ class _OverlaySection extends StatelessWidget {
           ),
           SizedBox(
             width: 48,
-            child: Text(value.round().toString(), textAlign: TextAlign.right, style: AppFonts.monoStyle(null)),
+            child: Text(
+              value.round().toString(),
+              textAlign: TextAlign.right,
+              style: AppFonts.monoStyle(null),
+            ),
           ),
         ],
       ),
@@ -422,12 +501,21 @@ class _OverlaySection extends StatelessWidget {
 
     return TfSection(
       title: '坐标显示',
-      footer: '打开后主窗口会变成置顶的小坐标窗，按 ${hotkey.label} 或点右上角按钮返回。',
+      footer: '坐标窗独立显示，主界面始终保留；按 ${hotkey.label} 显示或隐藏坐标窗。',
       children: [
         TfListTile(
           leading: const Icon(Icons.picture_in_picture_alt_outlined),
-          title: const Text('显示坐标窗口'),
-          trailing: TfButton(label: '打开', onPressed: () => _open(context)),
+          title: const Text('在悬浮窗显示坐标'),
+          trailing: TfSwitch(
+            value: overlay.active,
+            onChanged: (value) async {
+              if (value) {
+                await _open(context);
+              } else {
+                await overlay.close();
+              }
+            },
+          ),
         ),
         TfListTile(
           leading: const Icon(Icons.flag_outlined),
@@ -446,13 +534,47 @@ class _OverlaySection extends StatelessWidget {
           leading: const Icon(Icons.keyboard_outlined),
           title: const Text('快捷键'),
           subtitle: Text(hotkey.label, style: AppFonts.monoStyle(null)),
-          trailing: TfButton.secondary(label: '设置快捷键', onPressed: () => _captureHotkey(context)),
+          trailing: TfButton.secondary(
+            label: '设置快捷键',
+            onPressed: () => _captureHotkey(context),
+          ),
         ),
         if (overlay.followSupported) ...[
           TfListTile(
+            leading: const Icon(Icons.window_outlined),
+            title: const Text('游戏窗口'),
+            subtitle: Text(
+              prefs
+                  .get(PositionPrefs.gameExecutable)
+                  .split(RegExp(r'[\\/]'))
+                  .last,
+            ),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () async {
+              final target = await chooseGameWindow(
+                context,
+                prefs.get(PositionPrefs.gameExecutable),
+              );
+              if (target == null || !context.mounted) return;
+              try {
+                await AppServices.of(context).weakNetwork
+                    .setTargetExecutable(target);
+                await overlay.refresh();
+              } catch (error) {
+                if (context.mounted) {
+                  showTfToast(
+                    context,
+                    '切换窗口失败：$error',
+                    type: TfToastType.error,
+                  );
+                }
+              }
+            },
+          ),
+          TfListTile(
             leading: const Icon(Icons.filter_center_focus),
             title: const Text('跟随游戏窗口'),
-            subtitle: const Text('只读取 endfield.exe 的窗口位置，不读取游戏内存、不注入、不发送输入'),
+            subtitle: const Text('让悬浮窗跟随所选游戏窗口'),
             trailing: TfSwitch(
               value: follow,
               onChanged: (value) async {
@@ -473,13 +595,21 @@ class _OverlaySection extends StatelessWidget {
               '左右偏移',
               offset.h,
               position.allowsNegativeHorizontal,
-              (v) => PositionPrefs.setOffset(prefs, position, h: v.roundToDouble()),
+              (v) => PositionPrefs.setOffset(
+                prefs,
+                position,
+                h: v.roundToDouble(),
+              ),
             ),
             slider(
               '上下偏移',
               offset.v,
               position.allowsNegativeVertical,
-              (v) => PositionPrefs.setOffset(prefs, position, v: v.roundToDouble()),
+              (v) => PositionPrefs.setOffset(
+                prefs,
+                position,
+                v: v.roundToDouble(),
+              ),
             ),
           ],
         ],
@@ -498,7 +628,8 @@ class _TargetCoordinateEditor extends StatefulWidget {
   final TargetCoordinate? initial;
 
   @override
-  State<_TargetCoordinateEditor> createState() => _TargetCoordinateEditorState();
+  State<_TargetCoordinateEditor> createState() =>
+      _TargetCoordinateEditorState();
 }
 
 class _TargetCoordinateEditorState extends State<_TargetCoordinateEditor> {
@@ -510,9 +641,15 @@ class _TargetCoordinateEditorState extends State<_TargetCoordinateEditor> {
   @override
   void initState() {
     super.initState();
-    _x = TextEditingController(text: widget.initial == null ? '' : formatUpTo5(widget.initial!.x));
-    _y = TextEditingController(text: widget.initial == null ? '' : formatUpTo5(widget.initial!.y));
-    _z = TextEditingController(text: widget.initial == null ? '' : formatUpTo5(widget.initial!.z));
+    _x = TextEditingController(
+      text: widget.initial == null ? '' : formatUpTo5(widget.initial!.x),
+    );
+    _y = TextEditingController(
+      text: widget.initial == null ? '' : formatUpTo5(widget.initial!.y),
+    );
+    _z = TextEditingController(
+      text: widget.initial == null ? '' : formatUpTo5(widget.initial!.z),
+    );
   }
 
   @override
@@ -527,7 +664,12 @@ class _TargetCoordinateEditorState extends State<_TargetCoordinateEditor> {
     final x = double.tryParse(_x.text.trim());
     final y = double.tryParse(_y.text.trim());
     final z = double.tryParse(_z.text.trim());
-    if (x == null || y == null || z == null || !x.isFinite || !y.isFinite || !z.isFinite) {
+    if (x == null ||
+        y == null ||
+        z == null ||
+        !x.isFinite ||
+        !y.isFinite ||
+        !z.isFinite) {
       setState(() => _error = 'X、Y、Z 都需要填写有效数字');
       return;
     }
@@ -536,14 +678,24 @@ class _TargetCoordinateEditorState extends State<_TargetCoordinateEditor> {
 
   @override
   Widget build(BuildContext context) {
-    Widget field(String label, TextEditingController controller, {TextInputAction? action, VoidCallback? submitted}) =>
-        TextField(
-          controller: controller,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
-          textInputAction: action,
-          decoration: InputDecoration(labelText: label, border: const OutlineInputBorder()),
-          onSubmitted: submitted == null ? null : (_) => submitted(),
-        );
+    Widget field(
+      String label,
+      TextEditingController controller, {
+      TextInputAction? action,
+      VoidCallback? submitted,
+    }) => TextField(
+      controller: controller,
+      keyboardType: const TextInputType.numberWithOptions(
+        decimal: true,
+        signed: true,
+      ),
+      textInputAction: action,
+      decoration: InputDecoration(
+        labelText: label,
+        border: const OutlineInputBorder(),
+      ),
+      onSubmitted: submitted == null ? null : (_) => submitted(),
+    );
 
     return SizedBox(
       width: 420,
@@ -559,12 +711,22 @@ class _TargetCoordinateEditorState extends State<_TargetCoordinateEditor> {
               const SizedBox(width: 8),
               Expanded(child: field('Y', _y, action: TextInputAction.next)),
               const SizedBox(width: 8),
-              Expanded(child: field('Z', _z, action: TextInputAction.done, submitted: _save)),
+              Expanded(
+                child: field(
+                  'Z',
+                  _z,
+                  action: TextInputAction.done,
+                  submitted: _save,
+                ),
+              ),
             ],
           ),
           if (_error != null) ...[
             const SizedBox(height: 8),
-            Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            Text(
+              _error!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
           ],
           const SizedBox(height: 16),
           Wrap(
@@ -574,7 +736,9 @@ class _TargetCoordinateEditorState extends State<_TargetCoordinateEditor> {
               if (widget.initial != null)
                 TfButton.secondary(
                   label: '清除目标',
-                  onPressed: () => Navigator.of(context).pop((clear: true, x: 0.0, y: 0.0, z: 0.0)),
+                  onPressed: () =>
+                      Navigator.of(context)
+                          .pop((clear: true, x: 0.0, y: 0.0, z: 0.0)),
                 ),
               TfButton(label: '保存', icon: Icons.check, onPressed: _save),
             ],
@@ -617,13 +781,18 @@ class _HotkeyCaptureState extends State<_HotkeyCapture> {
   bool _unsupported = false;
 
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
-    if (event is! KeyDownEvent || _modifiers.contains(event.logicalKey)) return KeyEventResult.handled;
+    if (event is! KeyDownEvent || _modifiers.contains(event.logicalKey)) {
+      return KeyEventResult.handled;
+    }
     if (!GlobalHotkey.supports(event.physicalKey)) {
       setState(() => _unsupported = true);
       return KeyEventResult.handled;
     }
-    final label = event.logicalKey.keyLabel.isEmpty ? event.physicalKey.debugName ?? '?' : event.logicalKey.keyLabel;
-    Navigator.of(context).pop((key: event.physicalKey, label: label.toUpperCase()));
+    final label = event.logicalKey.keyLabel.isEmpty
+        ? event.physicalKey.debugName ?? '?'
+        : event.logicalKey.keyLabel;
+    Navigator.of(context)
+        .pop((key: event.physicalKey, label: label.toUpperCase()));
     return KeyEventResult.handled;
   }
 
@@ -634,7 +803,11 @@ class _HotkeyCaptureState extends State<_HotkeyCapture> {
     onKeyEvent: _onKey,
     child: Padding(
       padding: const EdgeInsets.symmetric(vertical: 16),
-      child: Text(_unsupported ? '不支持该按键，请换一个（字母、数字、F1–F24、方向键等）' : '请按下一个键作为切换坐标窗口的快捷键（不支持组合键）'),
+      child: Text(
+        _unsupported
+            ? '不支持该按键，请换一个（字母、数字、F1–F24、方向键等）'
+            : '请按下一个键作为切换坐标窗口的快捷键（不支持组合键）',
+      ),
     ),
   );
 }
@@ -647,7 +820,12 @@ class _CaptureSection extends StatelessWidget {
 
   Future<void> _start(BuildContext context) async {
     if (monitor.hasDetections) {
-      final ok = await showTfConfirm(context, title: '确认开始采集', message: '开始新的采集会清除当前已识别的滑索数据，是否继续？', destructive: true);
+      final ok = await showTfConfirm(
+        context,
+        title: '确认开始采集',
+        message: '开始新的采集会清除当前已识别的滑索数据，是否继续？',
+        destructive: true,
+      );
       if (!ok) return;
     }
     await monitor.startCapture();
@@ -680,7 +858,10 @@ class _CaptureSection extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              SelectableText(monitor.captureStatusText, style: theme.textTheme.bodyMedium),
+              SelectableText(
+                monitor.captureStatusText,
+                style: theme.textTheme.bodyMedium,
+              ),
               const SizedBox(height: 12),
               Wrap(
                 spacing: 8,
@@ -689,7 +870,9 @@ class _CaptureSection extends StatelessWidget {
                   TfButton(
                     label: '开始采集',
                     icon: Icons.play_arrow,
-                    onPressed: monitor.isCapturing ? null : () => _start(context),
+                    onPressed: monitor.isCapturing
+                        ? null
+                        : () => _start(context),
                   ),
                   TfButton.secondary(
                     label: '停止采集',
@@ -700,7 +883,10 @@ class _CaptureSection extends StatelessWidget {
                     label: '手动获取当前滑索',
                     icon: Icons.ads_click,
                     loading: monitor.isLoadingMarks,
-                    onPressed: monitor.position != null && !monitor.isLoadingMarks ? monitor.manualDetect : null,
+                    onPressed:
+                        monitor.position != null && !monitor.isLoadingMarks
+                        ? monitor.manualDetect
+                        : null,
                   ),
                 ],
               ),
@@ -713,7 +899,8 @@ class _CaptureSection extends StatelessWidget {
             title: const Text('当前滑索'),
             subtitle: SelectableText(monitor.manualResultText!, style: mono),
           ),
-        if (realtime != null) SectionBody(child: SelectableText(realtime, style: mono)),
+        if (realtime != null)
+          SectionBody(child: SelectableText(realtime, style: mono)),
         SectionBody(
           vertical: 8,
           child: Wrap(
@@ -737,12 +924,16 @@ class _CaptureSection extends StatelessWidget {
               TfButton.text(
                 label: '复制当前坐标',
                 icon: Icons.copy,
-                onPressed: lookup != null && lookup.found ? () => _copy(context, lookup.toTupleText()) : null,
+                onPressed: lookup != null && lookup.found
+                    ? () => _copy(context, lookup.toTupleText())
+                    : null,
               ),
               TfButton.text(
                 label: '复制当前 JSON',
                 icon: Icons.data_object,
-                onPressed: lookup != null && lookup.found ? () => _copy(context, lookup.toJsonText()) : null,
+                onPressed: lookup != null && lookup.found
+                    ? () => _copy(context, lookup.toJsonText())
+                    : null,
               ),
             ],
           ),

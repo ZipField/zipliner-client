@@ -8,12 +8,17 @@ import 'package:win32/win32.dart';
 /// 只查找 `endfield.exe` 的顶层窗口并读取其客户区位置（物理像素）。
 /// 不读写游戏内存、不注入、不向游戏发送任何输入或消息。
 class GameWindowLocator {
-  static const processName = 'endfield.exe';
+  GameWindowLocator({this.companionPid, String Function()? targetExecutable})
+    : _targetExecutable = targetExecutable ?? (() => 'Endfield.exe');
+  final String Function() _targetExecutable;
+  final int? companionPid;
+  String get targetName => _targetExecutable().split(RegExp(r'[\\/]')).last;
 
-  final Map<int, bool> _pidIsGame = {};
   final int _ownPid = Platform.isWindows ? GetCurrentProcessId() : -1;
 
   bool get isSupported => Platform.isWindows;
+
+  bool hasGameWindow() => isSupported && _findGameWindow() != null;
 
   /// 找不到游戏窗口时返回 null。
   Rect? findGameClientRect() {
@@ -27,7 +32,12 @@ class GameWindowLocator {
         final width = rect.ref.right - rect.ref.left;
         final height = rect.ref.bottom - rect.ref.top;
         if (width > 0 && height > 0) {
-          return Rect.fromLTWH(origin.ref.x.toDouble(), origin.ref.y.toDouble(), width.toDouble(), height.toDouble());
+          return Rect.fromLTWH(
+            origin.ref.x.toDouble(),
+            origin.ref.y.toDouble(),
+            width.toDouble(),
+            height.toDouble(),
+          );
         }
       }
       if (GetWindowRect(hwnd, rect).value) {
@@ -53,7 +63,12 @@ class GameWindowLocator {
   }
 
   /// 当前前台窗口属于本应用。
-  bool isSelfForeground() => isSupported && _pidOf(GetForegroundWindow()) == _ownPid;
+  bool isSelfForeground() {
+    if (!isSupported) return false;
+    final foreground = _pidOf(GetForegroundWindow());
+    return foreground == _ownPid ||
+        (companionPid != null && foreground == companionPid);
+  }
 
   HWND? _findGameWindow() {
     HWND? best;
@@ -70,7 +85,8 @@ class GameWindowLocator {
         final pid = _pidOf(next);
         if (pid == null || !_isGamePid(pid)) continue;
         if (!GetWindowRect(next, rect).value) continue;
-        final area = (rect.ref.right - rect.ref.left) * (rect.ref.bottom - rect.ref.top);
+        final area =
+            (rect.ref.right - rect.ref.left) * (rect.ref.bottom - rect.ref.top);
         if (area > bestArea) {
           best = next;
           bestArea = area;
@@ -95,29 +111,84 @@ class GameWindowLocator {
 
   bool _isGamePid(int pid) {
     if (pid == _ownPid) return false;
-    final cached = _pidIsGame[pid];
-    if (cached != null) return cached;
-    final result = _imageName(pid)?.toLowerCase() == processName;
-    if (_pidIsGame.length > 512) _pidIsGame.clear();
-    _pidIsGame[pid] = result;
-    return result;
+    if (pid == companionPid) return false;
+    final path = _imagePath(pid)?.toLowerCase();
+    final target = _targetExecutable().replaceAll('/', '\\').toLowerCase();
+    return path != null &&
+        (target.contains('\\')
+            ? path == target
+            : path.split(RegExp(r'[\\/]')).last == target);
   }
 
-  static String? _imageName(int pid) {
-    final handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid).value;
+  static String? _imagePath(int pid) {
+    final handle = OpenProcess(
+      PROCESS_QUERY_LIMITED_INFORMATION,
+      false,
+      pid,
+    ).value;
     if (handle.address == 0) return null;
     final buffer = calloc<Uint16>(1024);
     final size = calloc<Uint32>()..value = 1024;
     try {
-      if (!QueryFullProcessImageName(handle, PROCESS_NAME_WIN32, PWSTR(buffer.cast()), size).value) return null;
+      if (!QueryFullProcessImageName(
+        handle,
+        PROCESS_NAME_WIN32,
+        PWSTR(buffer.cast()),
+        size,
+      ).value) {
+        return null;
+      }
       final path = PWSTR(buffer.cast()).toDartString(length: size.value);
-      return path.split(RegExp(r'[\\/]')).last;
+      return path;
     } finally {
       CloseHandle(handle);
       calloc.free(buffer);
       calloc.free(size);
     }
   }
+
+  List<GameWindowChoice> visibleWindows() {
+    if (!isSupported) return const [];
+    final result = <GameWindowChoice>[];
+    HWND? current;
+    final title = calloc<Uint16>(1024);
+    try {
+      while (true) {
+        final next = FindWindowEx(null, current, null, null).value;
+        if (next.address == 0) break;
+        current = next;
+        if (!IsWindowVisible(next) ||
+            GetWindow(next, GW_OWNER).value.address != 0) {
+          continue;
+        }
+        final pid = _pidOf(next);
+        if (pid == null || pid == _ownPid || pid == companionPid) continue;
+        final count = GetWindowText(next, PWSTR(title.cast()), 1024).value;
+        if (count <= 0) continue;
+        final path = _imagePath(pid);
+        if (path == null) continue;
+        if (path.toLowerCase() == Platform.resolvedExecutable.toLowerCase()) {
+          continue;
+        }
+        result.add(
+          GameWindowChoice(
+            PWSTR(title.cast()).toDartString(length: count),
+            path,
+          ),
+        );
+      }
+    } finally {
+      calloc.free(title);
+    }
+    result.sort((a, b) => a.title.compareTo(b.title));
+    return result;
+  }
+}
+
+class GameWindowChoice {
+  const GameWindowChoice(this.title, this.executable);
+  final String title;
+  final String executable;
 }
 
 /// 本应用主窗口的原生句柄操作（仅 Windows，物理像素）。
@@ -164,6 +235,58 @@ class NativeWindow {
     }
   }
 
+  /// Unlike window_manager's posted SC_RESTORE, this completes the native
+  /// state change before the following overlay size is applied.
+  void restore() {
+    final hwnd = handle;
+    if (hwnd != null) ShowWindow(hwnd, SW_RESTORE);
+  }
+
+  void configureCoordinateWindow() {
+    final hwnd = handle;
+    if (hwnd == null) return;
+    final style = GetWindowLongPtr(hwnd, GWL_EXSTYLE).value;
+    SetWindowLongPtr(
+      hwnd,
+      GWL_EXSTYLE,
+      (style | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE) & ~WS_EX_APPWINDOW,
+    );
+    SetWindowPos(
+      hwnd,
+      null,
+      0,
+      0,
+      0,
+      0,
+      SET_WINDOW_POS_FLAGS(
+        SWP_NOMOVE |
+            SWP_NOSIZE |
+            SWP_NOZORDER |
+            SWP_NOACTIVATE |
+            SWP_FRAMECHANGED,
+      ),
+    );
+  }
+
+  void setOnTopWithoutActivation(bool value) {
+    final hwnd = handle;
+    if (hwnd == null) return;
+    SetWindowPos(
+      hwnd,
+      value ? HWND_TOPMOST : HWND_NOTOPMOST,
+      0,
+      0,
+      0,
+      0,
+      SET_WINDOW_POS_FLAGS(SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE),
+    );
+  }
+
+  void setVisibleWithoutActivation(bool value) {
+    final hwnd = handle;
+    if (hwnd != null) ShowWindow(hwnd, value ? SW_SHOWNOACTIVATE : SW_HIDE);
+  }
+
   void setRect(Rect rect) {
     final hwnd = handle;
     if (hwnd == null) return;
@@ -194,18 +317,30 @@ class NativeWindow {
 
   HWND? _find() {
     HWND? current;
+    HWND? hidden;
     final pid = calloc<Uint32>();
+    final className = calloc<Uint16>(128);
     try {
       while (true) {
         final next = FindWindowEx(null, current, null, null).value;
-        if (next.address == 0) return null;
+        if (next.address == 0) return hidden;
         current = next;
         GetWindowThreadProcessId(next, pid);
-        if (pid.value != _pid || GetWindow(next, GW_OWNER).value.address != 0) continue;
+        if (pid.value != _pid || GetWindow(next, GW_OWNER).value.address != 0) {
+          continue;
+        }
+        final length = GetClassName(next, PWSTR(className.cast()), 128).value;
+        if (length <= 0 ||
+            PWSTR(className.cast()).toDartString(length: length) !=
+                'FLUTTER_RUNNER_WIN32_WINDOW') {
+          continue;
+        }
         if (IsWindowVisible(next)) return next;
+        hidden ??= next;
       }
     } finally {
       calloc.free(pid);
+      calloc.free(className);
     }
   }
 }

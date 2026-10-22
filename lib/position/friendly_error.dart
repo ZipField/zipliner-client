@@ -29,6 +29,20 @@ class FriendlyError {
     final text = raw.toLowerCase();
     bool has(String s) => text.contains(s.toLowerCase());
 
+    // Public upstream details must remain visible instead of being replaced
+    // by a broad "offline", "network" or "no position" classification.
+    final upstreamPrefix = RegExp(r'^(森空岛|SKPort)(（\d+）)?：').firstMatch(raw);
+    if (upstreamPrefix != null) {
+      return FriendlyError(
+        title: raw.substring(upstreamPrefix.end).trim(),
+        hint: raw.contains('19001') ? '请确认已登录当前游戏角色，工具会自动重试。' : null,
+        action: raw.contains('10002') ? FixAction.relogin : FixAction.reconnect,
+        retryable: !raw.contains('10002'),
+        retryDelay: const Duration(seconds: 30),
+        raw: raw,
+      );
+    }
+
     if (has('未找到终末地角色')) {
       return FriendlyError(
         title: '这个账号下没有终末地角色',
@@ -69,11 +83,30 @@ class FriendlyError {
         raw: raw,
       );
     }
-    if (has('无法连接') || has('超时') || has('网络') || has('请求失败: 5') || has('connection')) {
-      return FriendlyError(title: '网络连接失败', hint: '请检查电脑或手机的网络，工具会自动重试。', retryable: true, raw: raw);
+    if (has('无法连接') ||
+        has('超时') ||
+        has('网络') ||
+        has('请求失败: 5') ||
+        has('connection')) {
+      return FriendlyError(
+        title: '网络连接失败',
+        hint: '请检查电脑或手机的网络，工具会自动重试。',
+        retryable: true,
+        raw: raw,
+      );
     }
-    if (has('websocket') || has('连接已断开') || has('服务器关闭连接') || has('无效的')) {
-      return FriendlyError(title: '连接中断', hint: '正在自动重连。', retryable: true, raw: raw);
+    if (has('websocket') ||
+        has('连接已断开') ||
+        has('连接中断') ||
+        has('定位服务暂时不可用') ||
+        has('服务器关闭连接') ||
+        has('无效的')) {
+      return FriendlyError(
+        title: '连接中断',
+        hint: '正在自动重连。',
+        retryable: true,
+        raw: raw,
+      );
     }
     return FriendlyError(title: raw, action: FixAction.reconnect, raw: raw);
   }

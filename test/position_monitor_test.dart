@@ -36,7 +36,11 @@ FakeResponse sklandResponder(RequestOptions request, {bool agreed = true}) {
             'channelName': '官服',
             'bindingList': [
               {
-                'defaultRole': {'serverId': '1', 'roleId': '42', 'nickname': '管理员'},
+                'defaultRole': {
+                  'serverId': '1',
+                  'roleId': '42',
+                  'nickname': '管理员',
+                },
               },
             ],
           },
@@ -107,9 +111,14 @@ class FakeSocket extends PositionSocket {
   }
 }
 
-PositionMonitor monitorWith(FakeAdapter adapter, {List<StoredToken> tokens = const [], FakeSocket? socket}) {
-  final dio = Dio(BaseOptions(responseType: ResponseType.plain, validateStatus: (_) => true))
-    ..httpClientAdapter = adapter;
+PositionMonitor monitorWith(
+  FakeAdapter adapter, {
+  List<StoredToken> tokens = const [],
+  FakeSocket? socket,
+}) {
+  final dio = Dio(
+    BaseOptions(responseType: ResponseType.plain, validateStatus: (_) => true),
+  )..httpClientAdapter = adapter;
   return PositionMonitor(
     client: SklandClient(dio: dio),
     tokens: TokenRepository(MemoryTokenStore(tokens)),
@@ -118,7 +127,11 @@ PositionMonitor monitorWith(FakeAdapter adapter, {List<StoredToken> tokens = con
   );
 }
 
-const token = StoredToken(id: 't1', token: 'user-token', region: SklandRegion.skland);
+const token = StoredToken(
+  id: 't1',
+  token: 'user-token',
+  region: SklandRegion.skland,
+);
 
 Future<void> pumpUntil(bool Function() condition) async {
   for (var i = 0; i < 100 && !condition(); i++) {
@@ -137,15 +150,15 @@ void main() {
 
   test('连接流程：加载角色 → 取 ws token → 接收坐标与 mapId', () async {
     final socket = FakeSocket();
-    final monitor = monitorWith(FakeAdapter(sklandResponder), tokens: [token], socket: socket);
-    monitor.requestInterval = const Duration(seconds: 3);
+    final monitor = monitorWith(
+      FakeAdapter(sklandResponder),
+      tokens: [token],
+      socket: socket,
+    );
     final run = monitor.start();
     await pumpUntil(() => socket.token != null);
 
     expect(socket.token, 'ws-token');
-    expect(socket.requestInterval, const Duration(seconds: 3));
-    monitor.requestInterval = const Duration(seconds: 5);
-    expect(socket.requestInterval, const Duration(seconds: 5));
     expect(socket.role!.roleId, '42');
     expect(monitor.activeRole!.displayName, '官服 - 管理员');
     expect(monitor.status, '已连接：官服 - 管理员，等待坐标...');
@@ -189,7 +202,11 @@ void main() {
 
   test('采集：拿到 mapId 后获取滑索标记并实时识别', () async {
     final socket = FakeSocket();
-    final monitor = monitorWith(FakeAdapter(sklandResponder), tokens: [token], socket: socket);
+    final monitor = monitorWith(
+      FakeAdapter(sklandResponder),
+      tokens: [token],
+      socket: socket,
+    );
     final detections = <String>[];
     monitor.onDetection = (stop) => detections.add(stop.label);
     unawaited(monitor.start());

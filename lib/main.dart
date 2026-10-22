@@ -7,9 +7,21 @@ import 'package:flutter/material.dart';
 import 'app.dart';
 import 'core/app_log.dart';
 import 'desktop/single_instance.dart';
+import 'desktop/coordinate_window_entry.dart';
+import 'desktop/client_widgets_binding.dart';
 
-Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+Future<void> main(List<String> arguments) async {
+  ClientWidgetsBinding();
+
+  if (arguments.firstOrNull == '--coordinate-window') {
+    try {
+      await runCoordinateWindow(arguments);
+    } catch (error, stack) {
+      stderr.writeln('Coordinate window failed: $error\n$stack');
+      exit(1);
+    }
+    return;
+  }
 
   // 调试时热重启会重新执行 main，所以只在发布版里限制单实例。
   if (kReleaseMode && !SingleInstance.acquire()) {

@@ -2,7 +2,7 @@
     <!-- 访问森空岛接口与定位 WebSocket -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <application
-        android:label="终末地坐标工具"
+        android:label="Zipliner Client"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

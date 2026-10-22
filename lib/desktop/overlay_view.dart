@@ -59,12 +59,16 @@ class _OverlayViewState extends State<OverlayView> {
   @override
   Widget build(BuildContext context) {
     final overlay = widget.overlay;
+    final weakText = overlay.weakNetworkText;
     final follow = overlay.follow;
     final monitor = widget.monitor;
     final at = monitor.lastDetectionAt;
-    final toast = at != null && DateTime.now().difference(at) < _toastDuration ? monitor.lastDetection : null;
+    final toast = at != null && DateTime.now().difference(at) < _toastDuration
+        ? monitor.lastDetection
+        : null;
     final openedAt = overlay.openedAt;
-    final showHint = openedAt != null && DateTime.now().difference(openedAt) < _hintDuration;
+    final showHint =
+        openedAt != null && DateTime.now().difference(openedAt) < _hintDuration;
     // 跟随模式下找不到游戏窗口时，小窗保持可点击，需要露出返回按钮。
     final clickable = !follow || overlay.warning != null;
 
@@ -73,10 +77,24 @@ class _OverlayViewState extends State<OverlayView> {
     final labelColor = follow ? Colors.white : colors.onSurfaceVariant;
     final fontSize = follow ? 14.0 : 18.0;
     final shadows = follow
-        ? const [Shadow(color: Color(0xFF191919), blurRadius: 5), Shadow(color: Color(0xFF191919), blurRadius: 2)]
+        ? const [
+            Shadow(color: Color(0xFF191919), blurRadius: 5),
+            Shadow(color: Color(0xFF191919), blurRadius: 2),
+          ]
         : null;
-    final mono = AppFonts.monoStyle(TextStyle(fontSize: fontSize, color: valueColor, shadows: shadows, height: 1));
-    final label = mono.copyWith(color: labelColor, fontSize: 10, fontWeight: FontWeight.w500);
+    final mono = AppFonts.monoStyle(
+      TextStyle(
+        fontSize: fontSize,
+        color: valueColor,
+        shadows: shadows,
+        height: 1,
+      ),
+    );
+    final label = mono.copyWith(
+      color: labelColor,
+      fontSize: 10,
+      fontWeight: FontWeight.w500,
+    );
     final small = mono.copyWith(
       fontFamily: AppFonts.family,
       fontSize: follow ? 10 : 9,
@@ -118,19 +136,26 @@ class _OverlayViewState extends State<OverlayView> {
 
     final Widget body = position == null
         ? Text(
-            monitor.problem?.title ?? (monitor.status.isEmpty ? '正在连接...' : monitor.status),
+            monitor.problem?.title ??
+                (monitor.status.isEmpty ? '正在连接...' : monitor.status),
             maxLines: 3,
             overflow: TextOverflow.ellipsis,
             style: mono.copyWith(
               fontFamily: AppFonts.family,
-              color: monitor.isError ? (follow ? const Color(0xFFFFB4AB) : colors.error) : valueColor,
+              color: monitor.isError
+                  ? (follow ? const Color(0xFFFFB4AB) : colors.error)
+                  : valueColor,
             ),
           )
         : Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              for (final (name, value) in [('X', position.x), ('Y', position.y), ('Z', position.z)])
+              for (final (name, value) in [
+                ('X', position.x),
+                ('Y', position.y),
+                ('Z', position.z),
+              ])
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 2),
                   child: Row(
@@ -140,7 +165,9 @@ class _OverlayViewState extends State<OverlayView> {
                         height: 10,
                         margin: const EdgeInsets.only(right: 7),
                         decoration: BoxDecoration(
-                          color: follow ? Colors.white70 : colors.primary.withValues(alpha: 0.65),
+                          color: follow
+                              ? Colors.white70
+                              : colors.primary.withValues(alpha: 0.65),
                           borderRadius: BorderRadius.circular(2),
                         ),
                       ),
@@ -170,57 +197,90 @@ class _OverlayViewState extends State<OverlayView> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (!follow) ...[
-          SizedBox(
-            height: 16,
-            child: Row(
-              children: [
-                Icon(Icons.my_location_rounded, size: 10, color: colors.primary),
-                const SizedBox(width: 5),
-                Text('坐标', style: small.copyWith(fontWeight: FontWeight.w500, letterSpacing: 1)),
-              ],
+        if (overlay.showCoordinates) ...[
+          if (!follow) ...[
+            SizedBox(
+              height: 16,
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.my_location_rounded,
+                    size: 10,
+                    color: colors.primary,
+                  ),
+                  const SizedBox(width: 5),
+                  Text(
+                    '坐标',
+                    style: small.copyWith(
+                      fontWeight: FontWeight.w500,
+                      letterSpacing: 1,
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(height: 3),
-        ],
-        body,
-        if (toast != null || (follow && overlay.warning != null) || showHint) const SizedBox(height: 4),
-        if (toast != null)
-          Text(
-            '已识别滑索 ${toast.label}',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: small.copyWith(color: follow ? const Color(0xFF8AB4F8) : colors.primary),
-          )
-        else if (follow && overlay.warning != null)
-          Text('未找到游戏窗口', maxLines: 1, style: small.copyWith(color: const Color(0xFFFFB4AB)))
-        else if (showHint)
-          Text('按 ${overlay.hotkeyLabel} 返回主界面', maxLines: 1, style: small),
-        if (target != null) ...[
-          const SizedBox(height: 5),
-          Row(
-            children: [
-              Text('目标', style: small.copyWith(fontWeight: FontWeight.w600)),
-              const SizedBox(width: 6),
-              Expanded(
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    '(${_coordinate(target.x, overlay.decimals)}, ${_coordinate(target.y, overlay.decimals)}, ${_coordinate(target.z, overlay.decimals)})',
-                    style: mono.copyWith(fontSize: follow ? 9.5 : 9, fontWeight: FontWeight.w500),
+            const SizedBox(height: 3),
+          ],
+          body,
+          if (toast != null || (follow && overlay.warning != null) || showHint)
+            const SizedBox(height: 4),
+          if (toast != null)
+            Text(
+              '已识别滑索 ${toast.label}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: small.copyWith(
+                color: follow ? const Color(0xFF8AB4F8) : colors.primary,
+              ),
+            )
+          else if (follow && overlay.warning != null)
+            Text(
+              '未找到游戏窗口',
+              maxLines: 1,
+              style: small.copyWith(color: const Color(0xFFFFB4AB)),
+            )
+          else if (showHint)
+            Text('按 ${overlay.hotkeyLabel} 隐藏坐标窗', maxLines: 1, style: small),
+          if (target != null) ...[
+            const SizedBox(height: 5),
+            Row(
+              children: [
+                Text('目标', style: small.copyWith(fontWeight: FontWeight.w600)),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      '(${_coordinate(target.x, overlay.decimals)}, ${_coordinate(target.y, overlay.decimals)}, ${_coordinate(target.z, overlay.decimals)})',
+                      style: mono.copyWith(
+                        fontSize: follow ? 9.5 : 9,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                distance == null ? '-- m' : '${distance.toStringAsFixed(2)} m',
-                style: small.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: follow ? Colors.white : colors.primary,
+                const SizedBox(width: 8),
+                Text(
+                  distance == null
+                      ? '-- m'
+                      : '${distance.toStringAsFixed(2)} m',
+                  style: small.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: follow ? Colors.white : colors.primary,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
+          ],
+        ],
+        if (weakText != null) ...[
+          if (overlay.showCoordinates) const SizedBox(height: 6),
+          Text(
+            weakText,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: small.copyWith(fontSize: 12, fontWeight: FontWeight.w600),
           ),
         ],
       ],
@@ -249,11 +309,19 @@ class _OverlayViewState extends State<OverlayView> {
       ),
     );
 
-    Widget fitWindow(Widget child) => FittedBox(
-      fit: BoxFit.contain,
+    // Native resize/DPI changes may reach Flutter a frame later. Never scale
+    // the readout to an old, full-size main-window viewport.
+    Widget fitWindow(Widget child) => Align(
+      alignment: Alignment.topLeft,
       child: SizedBox.fromSize(
-        size: overlay.baseSize,
-        child: MediaQuery.withNoTextScaling(child: child),
+        size: overlay.windowSize,
+        child: FittedBox(
+          fit: BoxFit.contain,
+          child: SizedBox.fromSize(
+            size: overlay.baseSize,
+            child: MediaQuery.withNoTextScaling(child: child),
+          ),
+        ),
       ),
     );
 
@@ -263,7 +331,10 @@ class _OverlayViewState extends State<OverlayView> {
           color: Colors.transparent,
           child: Stack(
             children: [
-              Padding(padding: EdgeInsets.fromLTRB(4, 4, clickable ? 24 : 4, 4), child: content),
+              Padding(
+                padding: EdgeInsets.fromLTRB(4, 4, clickable ? 24 : 4, 4),
+                child: content,
+              ),
               if (clickable) returnButton,
             ],
           ),
@@ -283,7 +354,10 @@ class _OverlayViewState extends State<OverlayView> {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  Color.alphaBlend(colors.primary.withValues(alpha: 0.035), colors.surfaceContainerLow),
+                  Color.alphaBlend(
+                    colors.primary.withValues(alpha: 0.035),
+                    colors.surfaceContainerLow,
+                  ),
                   colors.surface,
                 ],
               ),
@@ -306,5 +380,7 @@ class _OverlayViewState extends State<OverlayView> {
 
 String _coordinate(double value, int decimals) {
   final text = value.toStringAsFixed(decimals);
-  return text.startsWith('-') && double.tryParse(text) == 0 ? text.substring(1) : text;
+  return text.startsWith('-') && double.tryParse(text) == 0
+      ? text.substring(1)
+      : text;
 }

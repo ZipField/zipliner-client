@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio/dio.dart';
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
+import 'package:tf_framework/tf_framework.dart';
 
 import 'api_exception.dart';
 import 'config.dart';
@@ -25,6 +27,7 @@ class ApiClient {
     String? origin,
     HttpClientAdapter? httpClientAdapter,
     this.languageProvider,
+    this.metadataPreferences,
     Duration timeout = AppConfig.requestTimeout,
   }) : baseUrl = AppConfig.normalizeBaseUrl(baseUrl),
        origin = origin ?? AppConfig.webOrigin,
@@ -40,9 +43,76 @@ class ApiClient {
        ) {
     if (httpClientAdapter != null) _dio.httpClientAdapter = httpClientAdapter;
     _dio.interceptors.add(CookieManager(cookieJar));
+    _dio.interceptors.add(
+      InterceptorsWrapper(
+        onResponse: (response, handler) {
+          final date = response.headers.value('date');
+          if (date != null) {
+            try {
+              serverClockOffset = HttpDate.parse(date)
+                  .difference(DateTime.now());
+            } catch (_) {
+              /* An absent or invalid Date header is optional. */
+            }
+          }
+          handler.next(response);
+        },
+      ),
+    );
   }
 
-  static const sessionCookieNames = ['__Host-zipliner_session', 'zipliner_session'];
+  Duration serverClockOffset = Duration.zero;
+  final TfPreferencesController? metadataPreferences;
+
+  /// Public map metadata is cached separately from account data and credentials.
+  Future<dynamic> getMapMetadata(
+    String path, {
+    Map<String, Object?>? query,
+  }) async {
+    if (path != '/api/maps/info' && path != '/api/maps/region-config') {
+      throw ArgumentError('Only public map metadata can be cached');
+    }
+    final key = TfPreferenceKey<String>(
+      'map.metadata.${languageProvider?.call() ?? 'default'}.$path.${query?['mapId'] ?? ''}',
+      defaultValue: '',
+    );
+    try {
+      final data = await get(path, query: query);
+      final content =
+          data is Map && path == '/api/maps/info' && data['maps'] is! List
+          ? data['data']
+          : data;
+      if (content is! Map ||
+          (path == '/api/maps/info'
+              ? content['maps'] is! List
+              : content['regions'] is! List ||
+                    content['mapId'] != query?['mapId'])) {
+        throw const FormatException('地图配置格式无效');
+      }
+      if (metadataPreferences != null) {
+        try {
+          await metadataPreferences!.set(key, jsonEncode(data));
+        } catch (_) {
+          /* A cache write failure must not discard live metadata. */
+        }
+      }
+      return data;
+    } on ApiException catch (e) {
+      if (e.isUnauthorized ||
+          e.isForbidden ||
+          (!e.isNetworkError && (e.statusCode ?? 0) < 500)) {
+        rethrow;
+      }
+      final cached = metadataPreferences?.get(key) ?? '';
+      if (cached.isEmpty) rethrow;
+      return jsonDecode(cached);
+    }
+  }
+
+  static const sessionCookieNames = [
+    '__Host-zipliner_session',
+    'zipliner_session',
+  ];
   static const csrfHeader = 'X-Zipliner-CSRF';
 
   /// 这些 `/api/account/*` 路由在服务端被列为 CSRF 豁免，调用时不能先去拿令牌
@@ -75,11 +145,18 @@ class ApiClient {
 
   Uri get _baseUri => Uri.parse(baseUrl);
 
-  Future<dynamic> get(String path, {Map<String, Object?>? query, bool auth = false}) =>
-      _send('GET', path, query: query, auth: auth);
+  Future<dynamic> get(
+    String path, {
+    Map<String, Object?>? query,
+    bool auth = false,
+  }) => _send('GET', path, query: query, auth: auth);
 
-  Future<dynamic> post(String path, {Object? body, Map<String, Object?>? query, bool auth = false}) =>
-      _send('POST', path, body: body, query: query, auth: auth);
+  Future<dynamic> post(
+    String path, {
+    Object? body,
+    Map<String, Object?>? query,
+    bool auth = false,
+  }) => _send('POST', path, body: body, query: query, auth: auth);
 
   /// 下载二进制内容（例如二维码图片）。
   Future<Uint8List> getBytes(String path, {Map<String, Object?>? query}) async {
@@ -88,7 +165,10 @@ class ApiClient {
       response = await _dio.get<List<int>>(
         path,
         queryParameters: _compactQuery(query),
-        options: Options(responseType: ResponseType.bytes, headers: _baseHeaders()),
+        options: Options(
+          responseType: ResponseType.bytes,
+          headers: _baseHeaders(),
+        ),
       );
     } on DioException catch (e) {
       throw ApiException(_networkMessage(e));
@@ -131,8 +211,14 @@ class ApiClient {
   Future<String> _ensureCsrf() {
     final token = _csrfToken;
     final expiresAt = _csrfExpiresAt;
-    if (token != null && expiresAt != null && DateTime.now().isBefore(expiresAt)) return Future.value(token);
-    return _csrfInFlight ??= _fetchCsrf().whenComplete(() => _csrfInFlight = null);
+    if (token != null &&
+        expiresAt != null &&
+        DateTime.now().isBefore(expiresAt)) {
+      return Future.value(token);
+    }
+    return _csrfInFlight ??= _fetchCsrf().whenComplete(
+      () => _csrfInFlight = null,
+    );
   }
 
   Future<String> _fetchCsrf() async {
@@ -143,15 +229,21 @@ class ApiClient {
     final seconds = (json['expiresInSeconds'] as num?)?.toInt() ?? 1800;
     _csrfToken = token;
     // 提前一分钟刷新，避免请求在途中过期。
-    _csrfExpiresAt = DateTime.now().add(Duration(seconds: seconds > 120 ? seconds - 60 : seconds));
+    _csrfExpiresAt = DateTime.now().add(
+      Duration(seconds: seconds > 120 ? seconds - 60 : seconds),
+    );
     return token;
   }
 
-  bool _needsCsrf(String path) => path.startsWith('/api/account/') && !_csrfExemptPrefixes.any(path.startsWith);
+  bool _needsCsrf(String path) =>
+      path.startsWith('/api/account/') &&
+      !_csrfExemptPrefixes.any(path.startsWith);
 
   Map<String, Object> _baseHeaders() {
     final language = languageProvider?.call();
-    return {if (language != null && language.isNotEmpty) 'X-Language': language};
+    return {
+      if (language != null && language.isNotEmpty) 'X-Language': language,
+    };
   }
 
   Future<dynamic> _send(
@@ -166,7 +258,9 @@ class ApiClient {
     final headers = _baseHeaders();
     if (isPost) {
       headers['Origin'] = origin;
-      if (_needsCsrf(path) && await hasSession()) headers[csrfHeader] = await _ensureCsrf();
+      if (_needsCsrf(path) && await hasSession()) {
+        headers[csrfHeader] = await _ensureCsrf();
+      }
     }
 
     final Response<String> response;
@@ -175,7 +269,11 @@ class ApiClient {
         path,
         data: body,
         queryParameters: _compactQuery(query),
-        options: Options(method: method, headers: headers, contentType: isPost ? Headers.jsonContentType : null),
+        options: Options(
+          method: method,
+          headers: headers,
+          contentType: isPost ? Headers.jsonContentType : null,
+        ),
       );
     } on DioException catch (e) {
       if (!isPost && !retried && _isTransient(e)) {
@@ -191,7 +289,9 @@ class ApiClient {
 
     if (status >= 200 && status < 300) {
       if (decoded is Map && decoded.containsKey('success')) {
-        if (decoded['success'] == false) throw _errorFrom(status, decoded, text);
+        if (decoded['success'] == false) {
+          throw _errorFrom(status, decoded, text);
+        }
         return decoded['data'];
       }
       return decoded ?? (text.isEmpty ? null : text);
@@ -199,7 +299,14 @@ class ApiClient {
 
     if (isPost && status == 403 && !retried && text.contains('CSRF token')) {
       resetCsrf();
-      return _send(method, path, body: body, query: query, auth: auth, retried: true);
+      return _send(
+        method,
+        path,
+        body: body,
+        query: query,
+        auth: auth,
+        retried: true,
+      );
     }
     if (!isPost && !retried && const {502, 503, 504}.contains(status)) {
       await Future<void>.delayed(const Duration(milliseconds: 600));
@@ -243,9 +350,16 @@ class ApiClient {
     Object? data;
     if (decoded is Map) {
       data = decoded['data'];
-      message = _firstString([decoded['message'], decoded['error_description'], decoded['error'], decoded['title']]);
+      message = _firstString([
+        decoded['message'],
+        decoded['error_description'],
+        decoded['error'],
+        decoded['title'],
+      ]);
       code = _firstString([decoded['code'], decoded['errorCode']]);
-      if (code == null && data is Map) code = _firstString([data['code'], data['errorCode']]);
+      if (code == null && data is Map) {
+        code = _firstString([data['code'], data['errorCode']]);
+      }
       requestId = decoded['requestId']?.toString();
     } else if (text.isNotEmpty && text.length < 300) {
       message = text.trim();
@@ -303,7 +417,9 @@ class ApiClient {
   };
 
   static bool _isTransient(DioException e) => switch (e.type) {
-    DioExceptionType.connectionError || DioExceptionType.connectionTimeout || DioExceptionType.receiveTimeout => true,
+    DioExceptionType.connectionError ||
+    DioExceptionType.connectionTimeout ||
+    DioExceptionType.receiveTimeout => true,
     _ => false,
   };
 

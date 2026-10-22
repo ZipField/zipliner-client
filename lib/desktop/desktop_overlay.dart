@@ -8,17 +8,29 @@ import 'package:window_manager/window_manager.dart';
 
 import '../position/follow_placement.dart';
 import '../position/position_prefs.dart';
+import '../position/position_monitor.dart';
+import '../network/weak_network_controller.dart';
+import 'coordinate_window_host.dart';
 import 'game_window_locator.dart';
 import 'global_hotkey.dart';
 
-/// 桌面端坐标悬浮窗。原工具是独立的置顶小窗口；这里把主窗口切换为置顶的小坐标窗，
-/// 再按快捷键（默认 F12）或点返回按钮恢复。
+/// 独立坐标窗口。主程序持有状态与快捷键，显示进程只接收坐标和显示设置。
 ///
 /// 跟随游戏窗口时背景透明、鼠标穿透，并定期读取 `endfield.exe` 的窗口位置（仅 Windows）。
-class DesktopOverlay extends ChangeNotifier {
-  DesktopOverlay(this._prefs, {GameWindowLocator? locator}) : _locator = locator ?? GameWindowLocator();
+class DesktopOverlay extends ChangeNotifier with WindowListener {
+  DesktopOverlay(this._prefs, {GameWindowLocator? locator})
+    : _locator = locator ?? GameWindowLocator(),
+      _isWindow = false,
+      _onReturn = null;
 
-  static bool get isSupported => !kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS);
+  DesktopOverlay.window(
+    this._prefs, {
+    required this._locator,
+    required this._onReturn,
+  }) : _isWindow = true;
+
+  static bool get isSupported =>
+      !kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS);
 
   static const normalSize = Size(208, 116);
   static const followSize = Size(190, 100);
@@ -28,6 +40,105 @@ class DesktopOverlay extends ChangeNotifier {
 
   final TfPreferencesController _prefs;
   final GameWindowLocator _locator;
+  final bool _isWindow;
+  final VoidCallback? _onReturn;
+  CoordinateWindowHost? _host;
+  PositionMonitor? _monitor;
+  WeakNetworkController? _weakNetwork;
+  bool _remoteCoordinates = true;
+  String? _remoteWeakStatus;
+  bool _syncPending = false;
+  bool _windowFailed = false;
+  bool _weakWasVisible = false;
+  bool _initialized = false;
+  bool _disposed = false;
+
+  void attachMonitor(PositionMonitor monitor) {
+    _monitor?.removeListener(_sendSnapshot);
+    _monitor = monitor;
+    monitor.addListener(_sendSnapshot);
+  }
+
+  void attachWeakNetwork(WeakNetworkController controller) {
+    _weakNetwork?.removeListener(_weakChanged);
+    _weakNetwork = controller;
+    controller.addListener(_weakChanged);
+  }
+
+  bool get showCoordinates => !_isWindow || _remoteCoordinates;
+  String? get weakNetworkText =>
+      _isWindow ? _remoteWeakStatus : _weakNetwork?.overlayStatus;
+  bool get _needsWindow => active || weakNetworkText != null;
+
+  void _weakChanged() {
+    if (_disposed) return;
+    final visible = weakNetworkText != null;
+    if (visible && !_weakWasVisible) _windowFailed = false;
+    _weakWasVisible = visible;
+    unawaited(_syncWindow());
+    notifyListeners();
+  }
+
+  /// Only the display process consumes this; coordinate and weak-network
+  /// visibility are independent of whether its native window is running.
+  Future<void> updatePresentation(
+    Map<String, dynamic> message, {
+    bool restyle = false,
+  }) async {
+    final coordinates = message['coordinatesVisible'] != false;
+    final weakStatus = message['weakNetworkText'] as String?;
+    final geometryChanged =
+        coordinates != _remoteCoordinates ||
+        (weakStatus == null) != (_remoteWeakStatus == null);
+    _remoteCoordinates = coordinates;
+    _remoteWeakStatus = weakStatus;
+    if (_isWindow && active && (geometryChanged || restyle)) {
+      await _applyStyle();
+    }
+    notifyListeners();
+  }
+
+  void _sendSnapshot({bool includePreferences = false}) {
+    _host?.send(_snapshot(includePreferences: includePreferences));
+  }
+
+  Map<String, dynamic> _snapshot({bool includePreferences = false}) {
+    final monitor = _monitor;
+    final p = monitor?.position;
+    final stop = monitor?.lastDetection;
+    return {
+      'command': 'snapshot',
+      'coordinatesVisible': active,
+      'weakNetworkText': weakNetworkText,
+      if (includePreferences) 'preferences': _prefs.export(),
+      'position': p == null ? null : [p.x, p.y, p.z],
+      'status': monitor?.problem?.title ?? monitor?.status ?? '未连接',
+      'isError': monitor?.isError ?? false,
+      'detectionAt': monitor?.lastDetectionAt?.millisecondsSinceEpoch,
+      'detection': stop == null
+          ? null
+          : {
+              'order': stop.order,
+              'x': stop.x,
+              'y': stop.y,
+              'z': stop.z,
+              'direction': stop.direction,
+              'distance': stop.distance,
+              'heightOffset': stop.heightOffset,
+            },
+    };
+  }
+
+  void _preferencesChanged() => _sendSnapshot(includePreferences: true);
+
+  void _childEnded(CoordinateWindowHost host) {
+    if (_host != host) return;
+    _host = null;
+    active = false;
+    _windowFailed = true;
+    unawaited(host.close());
+    if (!_disposed) notifyListeners();
+  }
 
   bool active = false;
 
@@ -48,11 +159,19 @@ class DesktopOverlay extends ChangeNotifier {
 
   Size get baseSize {
     final base = follow ? followSize : normalSize;
-    return target == null ? base : Size(base.width, base.height + _targetExtraHeight);
+    if (!showCoordinates) return Size(base.width, follow ? 30 : 44);
+    return Size(
+      base.width,
+      base.height +
+          (target == null ? 0 : _targetExtraHeight) +
+          (weakNetworkText == null ? 0 : 24),
+    );
   }
 
   Size get windowSize =>
-      baseSize * (_prefs.get(PositionPrefs.overlayScale) * _prefs.get(TfPreferenceKeys.textScale));
+      baseSize *
+      (_prefs.get(PositionPrefs.overlayScale) *
+          _prefs.get(TfPreferenceKeys.textScale));
 
   String get hotkeyLabel => PositionPrefs.hotkeyOf(_prefs).label;
 
@@ -64,85 +183,148 @@ class DesktopOverlay extends ChangeNotifier {
   bool hotkeyPaused = false;
   final NativeWindow _native = NativeWindow();
 
-  /// 进入悬浮模式前的窗口位置。Windows 上是物理像素（见 [NativeWindow]），其他平台是逻辑像素。
-  Rect? _savedBounds;
+  /// Only the display process tracks game-relative placement.
   Timer? _followTimer;
+  int _followRevision = 0;
   DateTime _lastFocused = DateTime.now();
-  bool _hidden = false;
+  bool? _hidden;
   bool? _onTop;
   bool? _clickThrough;
   bool _busy = false;
 
   Future<void> initialize() async {
-    if (!isSupported) return;
+    if (!isSupported || _initialized || _disposed) return;
+    _initialized = true;
     await windowManager.ensureInitialized();
-    registerHotkey();
+    if (_disposed) return;
+    if (_isWindow) {
+      windowManager.addListener(this);
+      await windowManager.setPreventClose(true);
+    } else {
+      _prefs.addListener(_preferencesChanged);
+      registerHotkey();
+      if (_prefs.get(PositionPrefs.overlayVisible)) await open();
+    }
+  }
+
+  @override
+  void onWindowClose() {
+    if (_isWindow) _onReturn?.call();
   }
 
   void registerHotkey() {
     if (!isSupported) return;
     final hotkey = PositionPrefs.hotkeyOf(_prefs);
-    hotkeyWarning = _hotkey.register(hotkey.key) ? null : '快捷键 ${hotkey.label} 不可用，请换一个按键';
+    hotkeyWarning = _hotkey.register(hotkey.key)
+        ? null
+        : '快捷键 ${hotkey.label} 不可用，请换一个按键';
     notifyListeners();
   }
 
   Future<void> toggle() => active ? close() : open();
 
   Future<void> open() async {
-    if (!isSupported || active || _busy) return;
+    if (!isSupported || active || _disposed) return;
+    active = true;
+    _windowFailed = false;
+    openedAt = DateTime.now();
+    notifyListeners();
+    if (_isWindow) {
+      await _applyStyle();
+    } else {
+      await _prefs.set(PositionPrefs.overlayVisible, true);
+      await _syncWindow();
+    }
+  }
+
+  Future<void> _syncWindow() async {
+    if (_disposed || _isWindow || !isSupported) return;
+    _syncPending = true;
+    if (_busy) return;
     _busy = true;
     try {
-      _savedBounds = _native.isSupported ? _native.rect : await windowManager.getBounds();
-      active = true;
-      openedAt = DateTime.now();
-      notifyListeners();
-      await _applyStyle();
+      while (_syncPending && !_disposed) {
+        _syncPending = false;
+        if (!_needsWindow) {
+          final host = _host;
+          _host = null;
+          await host?.close();
+          continue;
+        }
+        if (_windowFailed) continue;
+        if (_host != null) {
+          _sendSnapshot();
+          continue;
+        }
+        late final CoordinateWindowHost host;
+        host = CoordinateWindowHost(
+          onExit: () => _childEnded(host),
+          onMessage: (message) {
+            if (_disposed || _host != host) return;
+            if (message['event'] == 'return_main') {
+              unawaited(close());
+              unawaited(
+                windowManager.show().then((_) => windowManager.focus()),
+              );
+            } else if (message['event'] == 'warning') {
+              warning = message['message'] as String?;
+              notifyListeners();
+            }
+          },
+        );
+        _host = host;
+        await host.start(_snapshot(includePreferences: true));
+        if (!_disposed && _host == host && _needsWindow) {
+          _sendSnapshot(includePreferences: true);
+        }
+      }
+    } catch (error) {
+      active = false;
+      _windowFailed = true;
+      final host = _host;
+      _host = null;
+      await host?.close();
+      warning = '无法打开坐标窗口：$error';
+      if (!_disposed) notifyListeners();
     } finally {
       _busy = false;
     }
   }
 
   Future<void> close() async {
-    if (!active || _busy) return;
-    _busy = true;
-    try {
-      _stopFollow();
-      // 退出浮窗时沿用当前小窗位置，但恢复尺寸仍使用进入浮窗前的大窗尺寸。
-      final currentBounds = _native.isSupported ? _native.rect : await windowManager.getBounds();
-      active = false;
-      warning = null;
-      notifyListeners();
-      await _setClickThrough(false);
-      await windowManager.setAlwaysOnTop(false);
-      await windowManager.setTitleBarStyle(TitleBarStyle.normal);
-      await windowManager.setResizable(true);
-      final saved = _savedBounds;
-      if (saved != null) {
-        final restored = currentBounds == null
-            ? saved
-            : Rect.fromLTWH(currentBounds.left, currentBounds.top, saved.width, saved.height);
-        _native.isSupported ? _native.setRect(restored) : await windowManager.setBounds(restored);
-      }
-      await windowManager.show();
-      await windowManager.focus();
-    } finally {
-      _busy = false;
+    if (_isWindow) {
+      _onReturn?.call();
+      return;
     }
+    if (!active || _disposed) return;
+    active = false;
+    warning = null;
+    notifyListeners();
+    await _prefs.set(PositionPrefs.overlayVisible, false);
+    await _syncWindow();
   }
 
   /// 跟随开关或显示位置变化后重新应用样式。
   Future<void> refresh() async {
-    if (active) await _applyStyle();
+    if (_isWindow) {
+      if (active) await _applyStyle();
+    } else {
+      _sendSnapshot(includePreferences: true);
+    }
     notifyListeners();
   }
 
   Future<void> _applyStyle() async {
     _stopFollow();
-    // 不调用 setSkipTaskbar：window_manager 在 Windows 上的实现会让进程卡死或退出。
-    await windowManager.setTitleBarStyle(TitleBarStyle.hidden, windowButtonVisibility: false);
+    // Only the separate display process changes its own window styles.
+    await windowManager.setTitleBarStyle(
+      TitleBarStyle.hidden,
+      windowButtonVisibility: false,
+    );
     // Windows 隐藏标题栏仍保留原生边框；浮窗需要完全无框。
     // close() 的 TitleBarStyle.normal 会恢复普通窗口。
     if (Platform.isWindows) await windowManager.setAsFrameless();
+    if (_native.isSupported) _native.configureCoordinateWindow();
     await windowManager.setResizable(false);
     await windowManager.setBackgroundColor(const Color(0x00000000));
     if (follow) {
@@ -156,7 +338,11 @@ class DesktopOverlay extends ChangeNotifier {
       await _setClickThrough(false);
       await _resize(windowSize);
       await _setOnTop(true);
-      await windowManager.show();
+      if (_native.isSupported) {
+        _native.setVisibleWithoutActivation(true);
+      } else {
+        await windowManager.show(inactive: true);
+      }
     }
   }
 
@@ -171,62 +357,107 @@ class DesktopOverlay extends ChangeNotifier {
     final rect = _native.rect;
     if (rect == null) return windowManager.setSize(logical);
     final scale = _native.scale;
-    _native.setRect(Rect.fromLTWH(rect.left, rect.top, logical.width * scale, logical.height * scale));
+    _native.setRect(
+      Rect.fromLTWH(
+        rect.left,
+        rect.top,
+        logical.width * scale,
+        logical.height * scale,
+      ),
+    );
   }
 
   void _stopFollow() {
+    _followRevision++;
     _followTimer?.cancel();
     _followTimer = null;
     _onTop = null;
-    _hidden = false;
+    _hidden = null;
   }
 
   Future<void> _setOnTop(bool value) async {
     if (_onTop == value) return;
     _onTop = value;
-    await windowManager.setAlwaysOnTop(value);
+    if (_native.isSupported) {
+      _native.setOnTopWithoutActivation(value);
+    } else {
+      await windowManager.setAlwaysOnTop(value);
+    }
   }
 
   Future<void> _setHidden(bool value) async {
     if (_hidden == value) return;
     _hidden = value;
-    value ? await windowManager.hide() : await windowManager.show(inactive: true);
+    if (_native.isSupported) {
+      _native.setVisibleWithoutActivation(!value);
+    } else {
+      value
+          ? await windowManager.hide()
+          : await windowManager.show(inactive: true);
+    }
   }
 
   Future<void> _followTick() async {
     if (!active || !follow) return;
+    final revision = _followRevision;
+    bool stillFollowing() => active && follow && revision == _followRevision;
     final game = _locator.findGameClientRect();
     if (game == null) {
-      _setWarning('未找到 endfield.exe 游戏窗口，坐标窗暂时保持可点击');
+      _setWarning('未找到 ${_locator.targetName} 窗口，坐标窗暂时保持可点击');
       await _setClickThrough(false);
+      if (!stillFollowing()) return;
       await _setOnTop(false);
+      if (!stillFollowing()) return;
       await _setHidden(false);
       return;
     }
     await _setClickThrough(true);
+    if (!stillFollowing()) return;
 
     final gameForeground = _locator.isGameForeground();
     final selfForeground = _locator.isSelfForeground();
     if (gameForeground) {
       _lastFocused = DateTime.now();
       await _setOnTop(true);
+      if (!stillFollowing()) return;
       await _setHidden(false);
     } else if (selfForeground) {
       _lastFocused = DateTime.now();
       await _setOnTop(false);
+      if (!stillFollowing()) return;
       await _setHidden(false);
     } else if (DateTime.now().difference(_lastFocused) >= _hideDelay) {
       await _setHidden(true);
     }
+    if (!stillFollowing()) return;
 
     _setWarning(null);
     // 游戏窗口是物理像素。按本窗口所在显示器的缩放换算成逻辑像素计算位置，再换回物理像素摆放，
     // 这样边距和偏移在不同缩放的显示器上观感一致。
     final scale = _native.scale;
-    final logical = Rect.fromLTRB(game.left / scale, game.top / scale, game.right / scale, game.bottom / scale);
+    final actual = _native.rect;
+    final expected = windowSize * scale;
+    if (actual != null &&
+        ((actual.width - expected.width).abs() > 2 ||
+            (actual.height - expected.height).abs() > 2)) {
+      await _resize(windowSize);
+      if (!stillFollowing()) return;
+    }
+    final logical = Rect.fromLTRB(
+      game.left / scale,
+      game.top / scale,
+      game.right / scale,
+      game.bottom / scale,
+    );
     final position = PositionPrefs.position(_prefs);
     final offset = PositionPrefs.offset(_prefs, position);
-    final target = FollowWindowPlacement.calculate(logical, windowSize, position, offset.h, offset.v);
+    final target = FollowWindowPlacement.calculate(
+      logical,
+      windowSize,
+      position,
+      offset.h,
+      offset.v,
+    );
     _native.setPosition(target * scale);
   }
 
@@ -238,7 +469,15 @@ class DesktopOverlay extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
+    _monitor?.removeListener(_sendSnapshot);
+    _weakNetwork?.removeListener(_weakChanged);
+    if (_initialized && !_isWindow) _prefs.removeListener(_preferencesChanged);
+    final host = _host;
+    _host = null;
+    if (host != null) unawaited(host.close());
     _stopFollow();
+    windowManager.removeListener(this);
     _hotkey.unregister();
     super.dispose();
   }
