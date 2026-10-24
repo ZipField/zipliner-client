@@ -35,7 +35,10 @@ class PositionEvidence:
     def baseline(self):
         with self.lock:
             sample = self.latest
-            if not sample or not sample.get('valid') or time.time()*1000-sample['observed_at_ms'] > 3000:
+            # This is a comparison reference, not proof of a current position.
+            # A stationary character may not receive another position for more
+            # than three seconds. confirmations still require new timed samples.
+            if not sample or not sample.get('valid'):
                 return None
             return sample.copy()
 
@@ -224,7 +227,13 @@ class ConnectionGate:
 
     def bypass(self, index):
         with self.lock:
-            return index in self.bypassed
+            if index in self.bypassed:
+                return True
+            # Do not start a hold that cannot be checked against coordinates.
+            # Existing holds keep their independent position/release checks.
+            if self.hold_watch is None and self.evidence.baseline() is None:
+                return True
+            return False
 
     def forwarded(self, index):
         with self.lock:

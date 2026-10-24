@@ -1,14 +1,17 @@
+import 'package:zipliner_client/app/bootstrap.dart';
+import 'package:zipliner_client/app/startup.dart';
+
 import 'dart:io';
 import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-import 'app.dart';
-import 'core/app_log.dart';
-import 'desktop/single_instance.dart';
-import 'desktop/coordinate_window_entry.dart';
-import 'desktop/client_widgets_binding.dart';
+import 'package:zipliner_client/app/app.dart';
+import 'package:zipliner_client/shared/logging/app_log.dart';
+import 'package:zipliner_client/platform/desktop/single_instance.dart';
+import 'package:zipliner_client/features/overlay/coordinate_window_entry.dart';
+import 'package:zipliner_client/platform/desktop/client_widgets_binding.dart';
 
 Future<void> main(List<String> arguments) async {
   ClientWidgetsBinding();
@@ -42,12 +45,21 @@ Future<void> main(List<String> arguments) async {
       child: Center(
         child: Padding(
           padding: EdgeInsets.all(16),
-          child: Text('这里出了点问题。请到“设置 → 复制诊断信息”，然后在项目主页反馈。', textAlign: TextAlign.center),
+          child: Text(
+            '这里出了点问题。请到“设置 → 复制诊断信息”，然后在项目主页反馈。',
+            textAlign: TextAlign.center,
+          ),
         ),
       ),
     );
   }
 
-  final (framework, services) = await bootstrap();
-  runApp(ZiplinerApp(framework: framework, services: services));
+  runApp(
+    ClientStartup(
+      load: () async {
+        final (framework, services) = await bootstrap();
+        return ZiplinerApp(framework: framework, services: services);
+      },
+    ),
+  );
 }

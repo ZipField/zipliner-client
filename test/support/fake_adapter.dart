@@ -6,15 +6,18 @@ import 'package:dio/dio.dart';
 class FakeResponse {
   const FakeResponse(this.body, {this.status = 200, this.headers = const {}});
 
-  factory FakeResponse.json(Object? body, {int status = 200, Map<String, List<String>> headers = const {}}) =>
-      FakeResponse(
-        jsonEncode(body),
-        status: status,
-        headers: {
-          'content-type': ['application/json; charset=utf-8'],
-          ...headers,
-        },
-      );
+  factory FakeResponse.json(
+    Object? body, {
+    int status = 200,
+    Map<String, List<String>> headers = const {},
+  }) => FakeResponse(
+    jsonEncode(body),
+    status: status,
+    headers: {
+      'content-type': ['application/json; charset=utf-8'],
+      ...headers,
+    },
+  );
 
   factory FakeResponse.text(String body, {int status = 200}) => FakeResponse(
     body,
@@ -44,7 +47,11 @@ class FakeAdapter implements HttpClientAdapter {
   ) async {
     requests.add(options);
     final response = handler(options);
-    return ResponseBody.fromBytes(utf8.encode(response.body), response.status, headers: response.headers);
+    return ResponseBody.fromBytes(
+      utf8.encode(response.body),
+      response.status,
+      headers: response.headers,
+    );
   }
 
   @override

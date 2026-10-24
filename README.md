@@ -16,7 +16,7 @@ Windows · Android · Linux
 
 ## 它能做什么
 
-- **实时坐标**：登录 Zipliner 使用共享定位，或使用本机森空岛 / SKPort 账号直连，实时显示角色的 X / Y / Z 坐标和所在地图。
+- **实时坐标**：使用 Zipliner 绑定账号或本机森空岛 / SKPort 账号直连，实时显示角色的 X / Y / Z 坐标和所在地图。
 - **独立坐标小窗**（Windows / Linux）：主界面始终保留，坐标在独立的小窗显示，默认 `F12` 切换显示/隐藏；Linux 的该快捷键仅在主界面获得焦点时生效。
 - **跟随游戏窗口**（Windows）：坐标窗贴在游戏窗口指定位置，背景透明、鼠标穿透，不挡操作。
 - **滑索采集**：站在滑索上自动识别，或一键获取脚下滑索的坐标与朝向，复制为 Zipliner 可导入的 JSON，可选记录 CSV。
@@ -81,7 +81,7 @@ Windows · Android · Linux
 
 ## 安全与隐私
 
-- **账号模式与存储**：Zipliner 模式的绑定由 Zipliner 后端管理，定位与网站共享；本机凭据仅保存在系统安全存储，不会自动上传。账号管理顶部的全宽按钮可切换查看网站绑定和本机账号；登录 Zipliner 时也能直接选用本机角色，无需退出或重复添加账号。
+- **账号模式与存储**：Zipliner 模式的绑定由 Zipliner 后端管理，客户端直连获取坐标，网站开启实时位置后才上传转发；直连凭据保存在系统安全存储。账号管理顶部的全宽按钮可切换查看网站绑定和本机账号；登录 Zipliner 时也能直接选用本机角色，无需退出或重复添加账号。
 - **区域信息与更新**：地图名称和高度范围从 Zipliner 后端获取；版本更新向 GitHub 查询。这些请求不向其发送森空岛账号凭据或游戏网络流量。
 - **本机凭据**：本地模式的账号凭据用系统加密保存（Windows DPAPI、Android Keystore、Linux 密钥环），不会自动上传。选择绑定到 Zipliner 时，相关账号绑定和定位由 Zipliner 服务管理。
 - **坐标悬浮窗**：“跟随游戏窗口”只读取所选游戏程序的窗口位置和前台状态，默认 `Endfield.exe`；不读写游戏内存、不注入、不向游戏发送输入。切换目标窗口也会切换弱网目标程序。
@@ -103,14 +103,15 @@ ZIPLINER_WINDOW="-1880,300,1280,760" flutter run -d windows
 
 ```
 lib/
-  main.dart / app.dart   入口、单实例、错误兜底、设置页的“帮助与关于”
-  skland/                森空岛本机请求：签名、登录、角色、滑索标记、定位 WebSocket
-  position/              连接监控（自动重连）、错误解释、账号存储、滑索识别/导出、采集记录
-  desktop/               坐标小窗、全局快捷键、游戏窗口定位、单实例（Win32）
-  pages/                 坐标、弱网、登录、账号管理、使用帮助
-  core/                  版本信息、日志与诊断、更新检查，以及区域名称和高度配置使用的后端客户端
-  ui/                    主题与排版修正
+  main.dart       进程入口、单实例和异常处理
+  app/            启动、依赖装配、导航和用户设置
+  shared/         HTTP、日志、序列化、格式化和公共组件
+  integrations/   森空岛 / SKPort 协议实现
+  platform/       桌面系统集成
+  features/       账号、定位、采集、悬浮窗、弱网、地图、设置
 ```
+
+具体职责、依赖边界与测试约定见[目录与维护说明](docs/architecture.md)。
 
 实现要点：
 
@@ -125,8 +126,8 @@ lib/
 推送 `vX.Y.Z` 标签即可，[Release 工作流](.github/workflows/release.yml) 会先跑测试，再构建 Windows / Linux / Android 并创建 Release：
 
 ```sh
-git tag v0.2.0
-git push origin v0.2.0
+git tag v0.3.0
+git push origin v0.3.0
 ```
 
 - Windows 包附带 VC++ 运行库 DLL 与中文使用说明。
