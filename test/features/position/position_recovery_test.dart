@@ -33,7 +33,7 @@ void main() {
     },
   );
 
-  test('offline and 19001 reconnects reuse the WebSocket token without repeating account login', () async {
+  test('automatic and manual reconnects get fresh tokens without repeating account setup', () async {
     var issuedTokens = 0;
     final adapter = FakeAdapter((request) {
       if (request.uri.path.endsWith('/websocket/token')) {
@@ -55,7 +55,6 @@ void main() {
     final monitor = PositionMonitor(
       client: SklandClient(dio: dio),
       tokens: TokenRepository(MemoryTokenStore([token])),
-      captureDirectory: () async => '.',
       socketFactory: () {
         final socket = FakeSocket();
         sockets.add(socket);
@@ -69,7 +68,20 @@ void main() {
     await firstRun;
 
     await pumpUntil(() => sockets.length == 2 && sockets.last.token != null);
-    expect(sockets.map((socket) => socket.token), ['ws-token-1', 'ws-token-1']);
+    expect(sockets.map((socket) => socket.token), ['ws-token-1', 'ws-token-2']);
+    sockets.last.end('服务器关闭连接（code=19001）：无法获取当前角色位置，请确保已登录游戏');
+    await pumpUntil(() => monitor.problem?.retryable == true);
+    final thirdRun = monitor.start();
+    await pumpUntil(() => sockets.length == 3 && sockets.last.token != null);
+    expect(sockets.map((socket) => socket.token), [
+      'ws-token-1',
+      'ws-token-2',
+      'ws-token-3',
+    ]);
+    expect(
+      adapter.requests.where((r) => r.uri.path.endsWith('/websocket/token')),
+      hasLength(3),
+    );
     expect(
       adapter.requests.where((r) => r.uri.path.endsWith('/grant')),
       hasLength(1),
@@ -80,19 +92,6 @@ void main() {
     );
     expect(
       adapter.requests.where((r) => r.uri.path.endsWith('/map/me')),
-      hasLength(1),
-    );
-    sockets.last.end('服务器关闭连接（code=19001）：无法获取当前角色位置，请确保已登录游戏');
-    await pumpUntil(() => monitor.problem?.retryable == true);
-    final thirdRun = monitor.start();
-    await pumpUntil(() => sockets.length == 3 && sockets.last.token != null);
-    expect(sockets.map((socket) => socket.token), [
-      'ws-token-1',
-      'ws-token-1',
-      'ws-token-1',
-    ]);
-    expect(
-      adapter.requests.where((r) => r.uri.path.endsWith('/websocket/token')),
       hasLength(1),
     );
 

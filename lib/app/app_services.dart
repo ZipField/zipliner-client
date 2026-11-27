@@ -26,9 +26,9 @@ import 'package:zipliner_client/shared/http/cookie_storage.dart';
 /// 应用级依赖的组合根。页面通过 `AppScope.of(context)` 取用。
 ///
 /// - [client]：Zipliner 后端，提供区域名称与高度范围。
-/// - [skland] / [tokens] / [monitor]：本机直连森空岛的坐标同步与滑索采集。
+/// - [skland] / [tokens] / [monitor]：本机直连森空岛的坐标同步。
 /// - [overlay]：桌面端坐标悬浮窗，移动端为 null。
-/// - [dataDirectory]：采集 CSV 与日志所在的文件夹。
+/// - [dataDirectory]：日志所在的文件夹。
 class AppServices {
   AppServices({
     required this.client,
@@ -52,7 +52,6 @@ class AppServices {
     _regionPositionLink = RegionPositionLink(client, monitor, this.weakNetwork);
     accounts?.beforeIdentityChange = () async {
       await this.weakNetwork.setEnabled(false);
-      monitor.collection.stopCapture();
       await monitor.disconnect();
       monitor.sessions.clear();
       monitor.selectedRoleKey = null;
@@ -94,7 +93,6 @@ class AppServices {
       prefs,
       skland,
       tokens,
-      dataDirectory: dataDirectory,
       accounts: accounts,
       gameWindowPresent: gameWindow.isSupported
           ? gameWindow.hasGameWindow
@@ -149,7 +147,6 @@ class AppServices {
         skland,
         repository,
         socketFactory: socketFactory,
-        dataDirectory: dataDirectory,
       ),
       updates: UpdateChecker(currentVersion: 'dev'),
       dataDirectory: dataDirectory,
@@ -160,7 +157,6 @@ class AppServices {
     TfPreferencesController prefs,
     SklandClient skland,
     TokenRepository tokens, {
-    required String dataDirectory,
     PositionSocket Function()? socketFactory,
     ClientAccounts? accounts,
     bool Function()? gameWindowPresent,
@@ -174,16 +170,14 @@ class AppServices {
         gameWindowPresent: gameWindowPresent,
         gameWindowName: gameWindowName,
         socketFactory: socketFactory,
-        captureDirectory: () async => dataDirectory,
         selectedRoleKey: selected.isEmpty ? null : selected,
-        recordCapture: prefs.get(AppPreferences.recordCapture),
       )
       ..onRoleSelected = (key) {
         if (accounts == null) prefs.set(AppPreferences.selectedRole, key);
       };
   }
 
-  /// 桌面端为“文档/Zipliner”，便于用户找到采集文件；Android 为应用私有目录。
+  /// 桌面端使用“文档/Zipliner”，Android 使用应用私有目录。
   static Future<String> defaultDataDirectory() async {
     final base = Platform.isAndroid
         ? await getApplicationSupportDirectory()
@@ -192,7 +186,7 @@ class AppServices {
     try {
       dir.createSync(recursive: true);
     } catch (_) {
-      // 目录创建失败时，采集与日志功能自行降级。
+      // 目录创建失败时，日志功能自行降级。
     }
     return dir.path;
   }

@@ -25,7 +25,7 @@ Future<String> buildDiagnostics(
     if (monitor.problem != null)
       '问题：${monitor.problem!.title} / ${monitor.problem!.raw}',
     '已连接：${monitor.isConnected}，地图：${monitor.mapId ?? '-'}，有坐标：${monitor.position != null}',
-    '角色数：${monitor.roles.length}，采集中：${monitor.collection.isCapturing}',
+    '角色数：${monitor.roles.length}',
     if (services.overlay != null)
       '悬浮窗：${services.overlay!.active ? '打开' : '关闭'}，跟随：${services.overlay!.follow}'
           '${services.overlay!.warning == null ? '' : '，${services.overlay!.warning}'}',

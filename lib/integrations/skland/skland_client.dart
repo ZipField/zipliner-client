@@ -38,11 +38,6 @@ class SklandClient {
   static const _webSocketTokenPath = '/api/v1/websocket/token';
   static const _mapMePath = '/web/v1/game/endfield/map/me';
   static const _agreePolicyPath = '/web/v1/game/endfield/map/agree-policy';
-  static const _markListPath = '/web/v1/game/endfield/map/mark/list';
-  static const ziplineTemplateIds = {
-    '0f45150a59b97bd0de9a4eed7a0fbf23',
-    '5d53bdb714ba42c1e1a1b748b55b686f',
-  };
 
   final Dio _dio;
 
@@ -263,23 +258,6 @@ class SklandClient {
     _ensureCodeZero(root, '同意终末地位置协议失败');
   }
 
-  Future<List<ZiplineMark>> getZiplineMarks(
-    CredentialResult credential,
-    String mapId,
-    RoleBinding role,
-    SklandRegion region,
-  ) async {
-    final query =
-        'mapId=${Uri.encodeComponent(mapId)}&roleId=${Uri.encodeComponent(role.roleId)}&serverId=${Uri.encodeComponent(role.serverId)}';
-    final root = await _signed(
-      '${zonaiUrl(region, _markListPath)}?$query',
-      _markListPath,
-      credential,
-      region,
-    );
-    return parseZiplineMarks(root);
-  }
-
   /// 读取服务器 `Date` 头计算本机时钟偏差；失败时保持原值。
   Future<void> syncNetworkTime() async {
     try {
@@ -331,25 +309,6 @@ class SklandClient {
       }
     }
     if (result.isEmpty) throw const SklandException('未找到终末地角色');
-    return result;
-  }
-
-  static List<ZiplineMark> parseZiplineMarks(Map<String, dynamic> root) {
-    _ensureCodeZero(root, '获取滑索标记失败');
-    final saveMarks = _obj(root['data'])['saveMarks'];
-    if (saveMarks is! List) throw const SklandException('获取滑索标记失败');
-    final result = <ZiplineMark>[];
-    for (final mark in saveMarks.whereType<Map>()) {
-      final templateId = mark['templateId']?.toString().toLowerCase() ?? '';
-      if (!ziplineTemplateIds.contains(templateId)) continue;
-      final pos = mark['pos'];
-      if (pos is! Map) continue;
-      final x = pos['x'], y = pos['y'], z = pos['z'];
-      if (x is! num || y is! num || z is! num) {
-        throw const SklandException('获取滑索标记失败');
-      }
-      result.add(ZiplineMark(x.toDouble(), y.toDouble(), z.toDouble()));
-    }
     return result;
   }
 
@@ -442,8 +401,12 @@ class SklandClient {
     // Reuse the ordinary upstream response clock; reconnect needs no extra HEAD.
     final date = response.headers.value('date');
     if (date != null) {
-      try { networkTimeOffset = HttpDate.parse(date).difference(DateTime.now().toUtc()); }
-      on FormatException { /* A missing/invalid Date must not fail login. */ }
+      try {
+        networkTimeOffset = HttpDate.parse(date)
+            .difference(DateTime.now().toUtc());
+      } on FormatException {
+        /* A missing/invalid Date must not fail login. */
+      }
     }
     final status = response.statusCode ?? 0;
     if (status < 200 || status >= 300) throw SklandException('请求失败: $status');

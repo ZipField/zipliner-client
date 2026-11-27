@@ -11,7 +11,6 @@ class DirectAccountSessions {
   final _local = <String, Future<List<RoleSession>>>{};
   final _credentials = <String, Future<CredentialResult>>{};
   final _policies = <String, Future<bool>>{};
-  final _socketTokens = <String, Future<String>>{};
   final _localVersions = <String, String>{};
 
   String _accountKey(RoleSession role) => role.gameAccountId == null
@@ -44,7 +43,6 @@ class DirectAccountSessions {
     if (_localVersions[key] != version) {
       _local.remove(key);
       _policies.removeWhere((k, _) => k.startsWith('$key:'));
-      _socketTokens.removeWhere((k, _) => k.startsWith('$key:'));
       _localVersions[key] = version;
     }
     return _once(_local, key, () async {
@@ -95,23 +93,15 @@ class DirectAccountSessions {
     _policies[_roleKey(role)] = Future.value(true);
   }
 
-  /// Reuse the connection token until the official server rejects it with 10002.
-  Future<String> socketToken(RoleSession role) => _once(
-    _socketTokens,
-    _roleKey(role),
-    () => client.getWebSocketToken(role.credential, role.region),
-  );
-
-  void forgetSocketToken(RoleSession role) {
-    _socketTokens.remove(_roleKey(role));
-  }
+  /// Request a fresh token for each new position WebSocket.
+  Future<String> socketToken(RoleSession role) =>
+      client.getWebSocketToken(role.credential, role.region);
 
   void invalidateAccount(String id, {required bool cloud}) {
     final key = cloud ? '${accounts?.profileId ?? 'cloud'}:$id' : 'local:$id';
     _local.remove(key);
     _credentials.remove(key);
     _policies.removeWhere((k, _) => k.startsWith('$key:'));
-    _socketTokens.removeWhere((k, _) => k.startsWith('$key:'));
     _localVersions.remove(key);
   }
 
@@ -119,7 +109,6 @@ class DirectAccountSessions {
     _local.clear();
     _credentials.clear();
     _policies.clear();
-    _socketTokens.clear();
     _localVersions.clear();
   }
 }

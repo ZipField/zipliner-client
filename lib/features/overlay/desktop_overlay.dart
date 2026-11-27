@@ -105,7 +105,6 @@ class DesktopOverlay extends ChangeNotifier with WindowListener {
   Map<String, dynamic> _snapshot({bool includePreferences = false}) {
     final monitor = _monitor;
     final p = monitor?.position;
-    final stop = monitor?.collection.lastDetection;
     return {
       'command': 'snapshot',
       'coordinatesVisible': active,
@@ -116,19 +115,6 @@ class DesktopOverlay extends ChangeNotifier with WindowListener {
       'isError': monitor?.isError ?? false,
       'connectionPhase': monitor?.phase.name,
       'connectionSource': monitor?.connection.source.name,
-      'detectionAt':
-          monitor?.collection.lastDetectionAt?.millisecondsSinceEpoch,
-      'detection': stop == null
-          ? null
-          : {
-              'order': stop.order,
-              'x': stop.x,
-              'y': stop.y,
-              'z': stop.z,
-              'direction': stop.direction,
-              'distance': stop.distance,
-              'heightOffset': stop.heightOffset,
-            },
     };
   }
 

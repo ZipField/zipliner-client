@@ -9,7 +9,7 @@ import 'package:zipliner_client/integrations/skland/skland_models.dart';
 
 import 'fake_adapter.dart';
 
-/// 模拟森空岛接口：一个 token 下有一个终末地角色，滑索标记在 (0,10,0)。
+/// 模拟森空岛接口：一个 token 下有一个终末地角色。
 FakeResponse sklandResponder(RequestOptions request, {bool agreed = true}) {
   final path = request.uri.path;
   if (request.method == 'HEAD') return const FakeResponse('');
@@ -60,19 +60,6 @@ FakeResponse sklandResponder(RequestOptions request, {bool agreed = true}) {
       'data': {'token': 'ws-token'},
     });
   }
-  if (path.endsWith('/mark/list')) {
-    return FakeResponse.json({
-      'code': 0,
-      'data': {
-        'saveMarks': [
-          {
-            'templateId': '0f45150a59b97bd0de9a4eed7a0fbf23',
-            'pos': {'x': 0, 'y': 10, 'z': 0},
-          },
-        ],
-      },
-    });
-  }
   return FakeResponse.text('', status: 404);
 }
 
@@ -121,7 +108,6 @@ PositionMonitor monitorWith(
   return PositionMonitor(
     client: SklandClient(dio: dio),
     tokens: TokenRepository(MemoryTokenStore(tokens)),
-    captureDirectory: () async => '.',
     socketFactory: () => socket ?? FakeSocket(),
   );
 }

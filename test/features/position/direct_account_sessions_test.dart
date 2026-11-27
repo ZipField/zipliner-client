@@ -10,7 +10,7 @@ import '../../support/position_fakes.dart' show sklandResponder;
 
 void main() {
   test(
-    'login, role loading, policy and socket token are reused until rejected',
+    'login, roles and policy stay cached while each socket gets a fresh token',
     () async {
       var socketTokenRequests = 0;
       final adapter = FakeAdapter((request) {
@@ -42,8 +42,6 @@ void main() {
 
       final reloadedRole = (await sessions.local(first)).single;
       expect(await sessions.policyAgreed(reloadedRole), isTrue);
-      expect(await sessions.socketToken(reloadedRole), 'ws-token-1');
-      sessions.forgetSocketToken(reloadedRole);
       expect(await sessions.socketToken(reloadedRole), 'ws-token-2');
       expect(
         adapter.requests.where(

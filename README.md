@@ -2,7 +2,7 @@
 
 # Zipliner Client
 
-**终末地滑索规划网站 Zipliner 的辅助工具，包含实时显示《明日方舟：终末地》角色坐标、辅助采集滑索数据等功能的跨平台小工具**
+**终末地滑索规划网站 Zipliner 的跨平台辅助工具，支持实时显示《明日方舟：终末地》角色坐标。**
 
 [![Release](https://img.shields.io/github/v/release/ZipField/zipliner-client?label=%E4%B8%8B%E8%BD%BD&color=4F6BED)](https://github.com/ZipField/zipliner-client/releases/latest)
 [![CI](https://github.com/ZipField/zipliner-client/actions/workflows/ci.yml/badge.svg)](https://github.com/ZipField/zipliner-client/actions/workflows/ci.yml)
@@ -19,7 +19,6 @@ Windows · Android · Linux
 - **实时坐标**：使用 Zipliner 绑定账号或本机森空岛 / SKPort 账号直连，实时显示角色的 X / Y / Z 坐标和所在地图。
 - **独立坐标小窗**（Windows / Linux）：主界面始终保留，坐标在独立的小窗显示，默认 `F12` 切换显示/隐藏；Linux 的该快捷键仅在主界面获得焦点时生效。
 - **跟随游戏窗口**（Windows）：坐标窗贴在游戏窗口指定位置，背景透明、鼠标穿透，不挡操作。
-- **滑索采集**：站在滑索上自动识别，或一键获取脚下滑索的坐标与朝向，复制为 Zipliner 可导入的 JSON，可选记录 CSV。
 - **多账号**：可以添加多个森空岛 / SKPort 账号，在角色之间切换。
 - **自动弱网**（Windows）：根据网络流量与坐标辅助识别，支持暂时解除弱网、自定义快捷键和 10–30 秒最大时长，默认 20 秒。功能默认关闭，需要先连接坐标；每次启动后首次启用须确认风险并允许管理员权限，首次使用另有 5 秒确认倒计时。常规游戏期间请关闭此功能。
 
@@ -108,7 +107,7 @@ lib/
   shared/         HTTP、日志、序列化、格式化和公共组件
   integrations/   森空岛 / SKPort 协议实现
   platform/       桌面系统集成
-  features/       账号、定位、采集、悬浮窗、弱网、地图、设置
+  features/       账号、定位、悬浮窗、弱网、地图、设置
 ```
 
 具体职责、依赖边界与测试约定见[目录与维护说明](docs/architecture.md)。

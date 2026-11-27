@@ -21,24 +21,21 @@ class OverlayView extends StatefulWidget {
 }
 
 class _OverlayViewState extends State<OverlayView> {
-  static const _toastDuration = Duration(seconds: 2);
   static const _hintDuration = Duration(seconds: 4);
-  Timer? _toastTimer;
   Timer? _hintTimer;
 
   @override
   void initState() {
     super.initState();
-    widget.monitor.addListener(_onMonitor);
+    widget.monitor.addListener(_refresh);
     widget.overlay.addListener(_refresh);
     _hintTimer = Timer(_hintDuration, _refresh);
   }
 
   @override
   void dispose() {
-    widget.monitor.removeListener(_onMonitor);
+    widget.monitor.removeListener(_refresh);
     widget.overlay.removeListener(_refresh);
-    _toastTimer?.cancel();
     _hintTimer?.cancel();
     super.dispose();
   }
@@ -47,25 +44,12 @@ class _OverlayViewState extends State<OverlayView> {
     if (mounted) setState(() {});
   }
 
-  void _onMonitor() {
-    final at = widget.monitor.collection.lastDetectionAt;
-    if (at != null && DateTime.now().difference(at) < _toastDuration) {
-      _toastTimer?.cancel();
-      _toastTimer = Timer(_toastDuration, _refresh);
-    }
-    _refresh();
-  }
-
   @override
   Widget build(BuildContext context) {
     final overlay = widget.overlay;
     final weakText = overlay.weakNetworkText;
     final follow = overlay.follow;
     final monitor = widget.monitor;
-    final at = monitor.collection.lastDetectionAt;
-    final toast = at != null && DateTime.now().difference(at) < _toastDuration
-        ? monitor.collection.lastDetection
-        : null;
     final openedAt = overlay.openedAt;
     final showHint =
         openedAt != null && DateTime.now().difference(openedAt) < _hintDuration;
@@ -222,18 +206,9 @@ class _OverlayViewState extends State<OverlayView> {
             const SizedBox(height: 3),
           ],
           body,
-          if (toast != null || (follow && overlay.warning != null) || showHint)
+          if ((follow && overlay.warning != null) || showHint)
             const SizedBox(height: 4),
-          if (toast != null)
-            Text(
-              '已识别滑索 ${toast.label}',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: small.copyWith(
-                color: follow ? const Color(0xFF8AB4F8) : colors.primary,
-              ),
-            )
-          else if (follow && overlay.warning != null)
+          if (follow && overlay.warning != null)
             Text(
               '未找到游戏窗口',
               maxLines: 1,

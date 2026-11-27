@@ -88,7 +88,6 @@ void main() {
       client: SklandClient(dio: dio),
       tokens: TokenRepository(MemoryTokenStore(const [directToken])),
       accounts: accounts,
-      captureDirectory: () async => '.',
       socketFactory: () => socket,
     );
     final run = monitor.start();
@@ -175,38 +174,6 @@ void main() {
     await pumpUntil(() => socket.token != null);
     expect(agreed, isTrue);
     expect(monitor.policyRequired, isFalse);
-    await monitor.disconnect();
-  });
-
-  test('采集：拿到 mapId 后获取滑索标记并实时识别', () async {
-    final socket = FakeSocket();
-    final monitor = monitorWith(
-      FakeAdapter(sklandResponder),
-      tokens: [token],
-      socket: socket,
-    );
-    final detections = <String>[];
-    monitor.collection.onDetection = (stop) => detections.add(stop.label);
-    unawaited(monitor.start());
-    await pumpUntil(() => socket.token != null);
-
-    await monitor.collection.startCapture();
-    expect(monitor.warning, '已开始采集；等待地图、登录和角色信息后再获取滑索数据');
-
-    socket.push(1, 13.5, 1);
-    await pumpUntil(() => monitor.collection.detector != null);
-    expect(monitor.warning, '已获取滑索数据：1 个，停在滑索上等待识别');
-
-    socket.push(1, 13.5, 1);
-    socket.push(1.05, 13.5, 1);
-    expect(detections, ['(1,10,1,北)']);
-    expect(monitor.warning, '已识别第 1 个滑索：(1,10,1,北)');
-
-    await monitor.collection.manualDetect();
-    expect(monitor.collection.lookupResult!.toTupleText(), '(1,10,1,北)');
-
-    monitor.collection.stopCapture();
-    expect(monitor.warning, '已停止采集');
     await monitor.disconnect();
   });
 }

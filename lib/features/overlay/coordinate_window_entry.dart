@@ -1,5 +1,3 @@
-import 'package:zipliner_client/features/collection/detected_zipline_stop.dart';
-
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -116,7 +114,6 @@ class _DisplayMonitor extends PositionMonitor {
     : super(
         client: SklandClient(),
         tokens: TokenRepository(MemoryTokenStore()),
-        captureDirectory: () async => Directory.systemTemp.path,
       );
 
   void update(Map<String, dynamic> message) {
@@ -142,22 +139,6 @@ class _DisplayMonitor extends PositionMonitor {
             .where((source) => source.name == message['connectionSource'])
             .firstOrNull ??
         PositionSource.direct;
-    final at = message['detectionAt'] as int?;
-    collection.lastDetectionAt = at == null
-        ? null
-        : DateTime.fromMillisecondsSinceEpoch(at);
-    final stop = message['detection'] as Map?;
-    collection.lastDetection = stop == null
-        ? null
-        : DetectedZiplineStop(
-            order: stop['order'] as int,
-            x: stop['x'] as int,
-            y: (stop['y'] as num).toDouble(),
-            z: stop['z'] as int,
-            direction: stop['direction'] as String,
-            distance: (stop['distance'] as num).toDouble(),
-            heightOffset: (stop['heightOffset'] as num).toDouble(),
-          );
     notifyListeners();
   }
 }

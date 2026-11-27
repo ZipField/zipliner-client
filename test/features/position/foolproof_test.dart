@@ -136,7 +136,6 @@ void main() {
     final monitor = PositionMonitor(
       client: SklandClient(dio: dio),
       tokens: TokenRepository(MemoryTokenStore(const [token])),
-      captureDirectory: () async => '.',
       socketFactory: () {
         final socket = FakeSocket();
         sockets.add(socket);
@@ -183,7 +182,6 @@ void main() {
       final monitor = PositionMonitor(
         client: SklandClient(dio: dio),
         tokens: TokenRepository(MemoryTokenStore(const [token])),
-        captureDirectory: () async => '.',
         socketFactory: () {
           final socket = FakeSocket();
           sockets.add(socket);
@@ -242,7 +240,6 @@ void main() {
     final monitor = PositionMonitor(
       client: SklandClient(dio: dio),
       tokens: TokenRepository(MemoryTokenStore(const [token])),
-      captureDirectory: () async => '.',
       socketFactory: PositionSocket.new,
     );
     await monitor.start();

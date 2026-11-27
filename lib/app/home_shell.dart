@@ -49,11 +49,6 @@ class _HomeShellState extends State<HomeShell> {
     if (_started) return;
     _started = true;
     final monitor = _monitor = AppScope.of(context).monitor;
-    monitor.collection.onDetection = (stop) {
-      if (mounted) {
-        showTfToast(context, '已识别滑索 ${stop.label}', type: TfToastType.success);
-      }
-    };
     if (Platform.isAndroid) monitor.addListener(_updateWakelock);
     WidgetsBinding.instance.addPostFrameCallback((_) => monitor.start());
     final services = AppScope.of(context);

@@ -1,5 +1,3 @@
-import 'package:zipliner_client/features/collection/collection_controller.dart';
-
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -20,36 +18,17 @@ import 'package:zipliner_client/features/position/models/friendly_error.dart';
 import 'package:zipliner_client/features/accounts/storage/token_store.dart';
 
 /// Owns position connections, selected roles and recovery.
-/// Collection receives coordinates through [collection] without owning the connection.
 class PositionMonitor extends ChangeNotifier {
   PositionMonitor({
     required this.client,
     required this.tokens,
-    required this._captureDirectory,
     PositionSocket Function()? socketFactory,
     this.selectedRoleKey,
-    bool recordCapture = false,
     this.accounts,
     this.gameWindowPresent,
     this.gameWindowName,
     this.retryDelays = defaultRetryDelays,
-  }) : _socketFactory = socketFactory ?? PositionSocket.new {
-    collection = CollectionController(
-      readContext: () => CollectionContext(
-        revision: _runId,
-        role: activeRole,
-        mapId: mapId,
-        position: position,
-      ),
-      loadMarks: _marks,
-      captureDirectory: _captureDirectory,
-      setWarning: (value) => warning = value,
-      onChanged: _notify,
-      recordCapture: recordCapture,
-    );
-  }
-
-  late final CollectionController collection;
+  }) : _socketFactory = socketFactory ?? PositionSocket.new;
 
   static const defaultRetryDelays = [
     Duration(seconds: 3),
@@ -83,7 +62,6 @@ class PositionMonitor extends ChangeNotifier {
     PositionSource.direct => '森空岛直连',
     PositionSource.shared => 'Zipliner 共享定位',
   };
-  final Future<String> Function() _captureDirectory;
   final PositionSocket Function() _socketFactory;
 
   /// 自动重连的退避间隔，用完后一直使用最后一项。
@@ -181,7 +159,6 @@ class PositionMonitor extends ChangeNotifier {
     connection.source = PositionSource.direct;
     position = null;
     positionReceivedAt = null;
-    collection.clearMap(resetAttempt: true);
     mapId = null;
     levelId = null;
     _notify();
@@ -304,7 +281,6 @@ class PositionMonitor extends ChangeNotifier {
       if (run == _runId && reason != null) {
         failure = reason;
         if (RegExp(r'^服务器关闭连接（code="?10002"?）：').hasMatch(reason)) {
-          sessions.forgetSocketToken(role);
           retryable = true;
         }
       }
@@ -418,10 +394,7 @@ class PositionMonitor extends ChangeNotifier {
     positionRevision++;
     positionReceivedAt = observed;
     if (map != null && map.isNotEmpty) {
-      if (map != mapId) {
-        levelId = null;
-        collection.clearMap();
-      }
+      if (map != mapId) levelId = null;
       mapId = map;
     }
     if (level != null && level.isNotEmpty) levelId = level;
@@ -430,37 +403,8 @@ class PositionMonitor extends ChangeNotifier {
     connection.transition(PositionPhase.connected);
     problem = null;
     _retryAttempt = 0;
-    collection.acceptPosition(p);
     _notify();
     if (received != null) _timing?.end(received);
-  }
-
-  Future<List<ZiplineMark>> _marks(RoleSession role, String map) async {
-    if (role.hasLocalCredential) {
-      return client.getZiplineMarks(
-        role.credential,
-        map,
-        role.binding,
-        role.region,
-      );
-    }
-    final data = await accounts!.api.get(
-      '/api/account/ziplines',
-      auth: true,
-      query: {
-        'mapId': map,
-        'roleId': role.binding.roleId,
-        'serverId': role.binding.serverId,
-      },
-    );
-    return [
-      for (final item in (data as Map)['items'] as List)
-        ZiplineMark(
-          (item['x'] as num).toDouble(),
-          (item['y'] as num).toDouble(),
-          (item['z'] as num).toDouble(),
-        ),
-    ];
   }
 
   void _scheduleRetry(FriendlyError problem) {
@@ -551,7 +495,6 @@ class PositionMonitor extends ChangeNotifier {
     positionReceivedAt = null;
     mapId = null;
     levelId = null;
-    collection.clearMap();
     status = '已断开';
     problem = null;
     _notify();
@@ -573,7 +516,6 @@ class PositionMonitor extends ChangeNotifier {
       await socket?.close();
       await publisher?.close(handoff: true);
     }());
-    collection.dispose();
     super.dispose();
   }
 }

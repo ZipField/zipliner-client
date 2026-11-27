@@ -10,9 +10,8 @@ import 'package:zipliner_client/features/position/presentation/position_update_b
 import 'package:zipliner_client/features/position/presentation/position_welcome_card.dart';
 import 'package:zipliner_client/features/position/presentation/position_status_section.dart';
 import 'package:zipliner_client/features/overlay/overlay_section.dart';
-import 'package:zipliner_client/features/collection/capture_section.dart';
 
-/// 对应原工具的主窗口：连接状态、坐标、坐标窗设置、滑索采集。
+/// 显示连接状态、实时坐标和坐标窗设置。
 class PositionPage extends StatelessWidget {
   const PositionPage({super.key});
 
@@ -40,7 +39,6 @@ class PositionPage extends StatelessWidget {
             if (!services.monitor.hasTokens) const PositionWelcomeCard(),
             PositionStatusSection(monitor: services.monitor),
             if (overlay != null) OverlaySection(overlay: overlay, prefs: prefs),
-            CaptureSection(monitor: services.monitor, prefs: prefs),
           ],
         );
       },

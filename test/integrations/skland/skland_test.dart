@@ -31,12 +31,12 @@ void main() {
       () {
         expect(
           SklandSigner.sign(
-            path: '/web/v1/game/endfield/map/mark/list',
-            queryOrBody: 'mapId=map01&roleId=123&serverId=1',
+            path: '/web/v1/game/endfield/map/me',
+            queryOrBody: 'roleId=123&serverId=1',
             timestamp: '1790000000',
             token: 'abc123token',
           ),
-          '97de2798f54d255f7e2e72a594f9abbd',
+          'd162ae6c432faf5695e691285b626d2d',
         );
       },
     );
@@ -71,35 +71,18 @@ void main() {
       final adapter = FakeAdapter(
         (_) => FakeResponse.json({
           'code': 0,
-          'data': {
-            'saveMarks': [
-              {
-                'templateId': '0F45150A59B97BD0DE9A4EED7A0FBF23',
-                'pos': {'x': 10, 'y': 5.5, 'z': 20},
-              },
-              {
-                'templateId': 'other',
-                'pos': {'x': 1, 'y': 1, 'z': 1},
-              },
-              {
-                'templateId': '5d53bdb714ba42c1e1a1b748b55b686f',
-                'pos': {'x': -3.25, 'y': 0, 'z': 7},
-              },
-            ],
-          },
+          'data': {'hasUserPositionAgree': true},
         }),
       );
-      final marks = await _client(adapter)
-          .getZiplineMarks(_cred, 'map01', _role, SklandRegion.skland);
-
-      expect(marks.map((m) => (m.x, m.y, m.z)), [
-        (10.0, 5.5, 20.0),
-        (-3.25, 0.0, 7.0),
-      ]);
+      expect(
+        await _client(adapter)
+            .hasAgreedPositionPolicy(_cred, _role, SklandRegion.skland),
+        isTrue,
+      );
       final request = adapter.requests.single;
       expect(
         request.uri.toString(),
-        'https://zonai.skland.com/web/v1/game/endfield/map/mark/list?mapId=map01&roleId=123&serverId=1',
+        'https://zonai.skland.com/web/v1/game/endfield/map/me?roleId=123&serverId=1',
       );
       final timestamp = request.headers['timestamp'] as String;
       expect(request.headers['Cred'], 'cred-1');
@@ -108,8 +91,8 @@ void main() {
       expect(
         request.headers['Sign'],
         SklandSigner.sign(
-          path: '/web/v1/game/endfield/map/mark/list',
-          queryOrBody: 'mapId=map01&roleId=123&serverId=1',
+          path: '/web/v1/game/endfield/map/me',
+          queryOrBody: 'roleId=123&serverId=1',
           timestamp: timestamp,
           token: _cred.token,
         ),

@@ -69,7 +69,6 @@ class RoleSession {
   final SklandRegion region;
   final CredentialResult? _credential;
   final String? gameAccountId;
-  bool get hasLocalCredential => _credential != null;
   CredentialResult get credential =>
       _credential ??
       (throw const SklandException('当前角色使用 Zipliner 定位，未在本机保存森空岛凭据。'));
@@ -82,15 +81,6 @@ class RoleSession {
 
 class PositionSnapshot {
   const PositionSnapshot(this.x, this.y, this.z);
-
-  final double x;
-  final double y;
-  final double z;
-}
-
-/// 地图上的滑索标记，`pos` 是 3x3 占地的一个角。
-class ZiplineMark {
-  const ZiplineMark(this.x, this.y, this.z);
 
   final double x;
   final double y;

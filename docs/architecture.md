@@ -33,7 +33,6 @@ lib/
       connections/            独立的网站坐标上传连接
       application/            定位连接、角色选择、重连、接收时序统计
       presentation/           坐标主页、状态、读数及账号操作入口
-    collection/               采集控制、识别算法、识别结果、导出与文件记录
     overlay/                  悬浮窗控制、子进程通信、跟随布局、显示及设置界面
     weak_network/             弱网控制、辅助进程桥接、坐标证据传递、风险提示
     maps/
@@ -50,11 +49,9 @@ lib/
 
 - `main.dart` 选择主界面或悬浮窗子进程入口；不要为了调用更新弹窗而导入整个应用启动文件。
 - `AppServices` 是组合根，负责创建服务、连接跨功能事件并持有资源。界面通过 `AppScope.of(context)` 获取依赖。HTTP、协议和算法实现不应反向导入界面或导航。
-- `PositionMonitor` 负责连接、角色、接收状态和恢复。它持有 `collection`，向采集控制器提供当前连接上下文和坐标；采集控制器不打开或重连定位连接。
-- `CollectionController` 持有采集、识别和记录状态。异步获取标记时保留连接 revision 检查，避免旧连接的数据覆盖新连接。采集消息及状态变更继续通知主定位界面。
+- `PositionMonitor` 负责定位连接、角色选择、坐标接收和断线恢复。
 - `DirectAccountSessions` 复用应用会话内成功的账号初始化结果。`DesktopPositionPublisher` 只处理网站订阅通知和坐标上传，不拥有官方定位连接；后台异常不关闭本机直连。
 - 登录页面返回 `LoginResult` 或云端绑定成功结果。新增、重新登录和账号管理跳转由外层动作负责；账号列表与登录页面不互相导航导入。
-- `DetectedZiplineStop` 是独立数据模型。识别器、记录器和导出器共同依赖它，导出器不再反向依赖识别器。
 - 多个功能共用的内容才放 `shared`。业务类不能因为“可能被复用”就被塞入通用工具目录。
 
 ## Windows 网络辅助程序

@@ -1,6 +1,5 @@
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:tf_framework/tf_framework.dart';
 
@@ -33,10 +32,6 @@ abstract final class AppPreferences {
   static final hotkey = TfPreferenceKey<String>(
     'position.hotkey',
     defaultValue: '${PhysicalKeyboardKey.f12.usbHidUsage}|F12',
-  );
-  static const recordCapture = TfPreferenceKey<bool>(
-    'position.recordCapture',
-    defaultValue: kDebugMode,
   );
   static const selectedRole = TfPreferenceKey<String>(
     'position.selectedRole',

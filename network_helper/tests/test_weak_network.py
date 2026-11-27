@@ -118,5 +118,72 @@ class WeakNetworkTests(unittest.TestCase):
             writer.close()
 
 
+@unittest.skipUnless(sys.platform == 'win32', 'Windows network helper')
+class RelaySummaryTests(unittest.TestCase):
+    def test_disconnect_reports_first_eof_and_frame_progress(self):
+        from concurrent.futures import ThreadPoolExecutor
+        from contextlib import ExitStack
+        import json
+        from pathlib import Path
+        import socket
+        from tempfile import TemporaryDirectory
+        from types import SimpleNamespace
+        from unittest.mock import patch
+
+        from engine import Engine
+        from network_log import NetworkLog
+
+        for first_eof, reply_length, reply_frames in (
+            ('CLIENT_EOF', 3, 0),
+            ('SERVER_EOF', 5, 1),
+        ):
+            with self.subTest(first_eof=first_eof), ExitStack() as stack:
+                game, client = map(stack.enter_context, socket.socketpair())
+                upstream, server = map(stack.enter_context, socket.socketpair())
+                control, _ = map(stack.enter_context, socket.socketpair())
+                root = stack.enter_context(TemporaryDirectory())
+                engine = Engine(control)
+                engine.logger = NetworkLog(root, engine.started)
+                stack.callback(engine.logger.close)
+                route = {'remote': '127.0.0.1', 'client_port': 12345}
+                engine.redirector = SimpleNamespace(original=lambda peer: route)
+                engine.state.enable(True)
+                stack.enter_context(patch('engine.socket.create_connection', return_value=upstream))
+                workers = stack.enter_context(ThreadPoolExecutor())
+                relay = workers.submit(engine.connection, client, route)
+                game.settimeout(3)
+                server.settimeout(3)
+                game_reader = stack.enter_context(game.makefile('rb'))
+                server_reader = stack.enter_context(server.makefile('rb'))
+                request = frame(0, 1)
+                reply = frame(0, 2)[:reply_length]
+                try:
+                    game.sendall(request)
+                    self.assertEqual(server_reader.read(len(request)), request)
+                    server.sendall(reply)
+                    self.assertEqual(game_reader.read(len(reply)), reply)
+                    peer = game if first_eof == 'CLIENT_EOF' else server
+                    peer.shutdown(socket.SHUT_WR)
+                    relay.result(timeout=3)
+                finally:
+                    engine.stop.set()
+
+                entries = [json.loads(line) for line in
+                           (Path(root) / 'events.jsonl').read_text(encoding='utf-8').splitlines()]
+                summary = entries[-1]
+                self.assertEqual(summary['event'], 'DISCONNECTED')
+                self.assertEqual(summary['first_end_event'], first_eof)
+                self.assertFalse(summary['helper_stopping'])
+                self.assertTrue(summary['upload_finished'])
+                self.assertEqual(summary['dl_received_bytes'], len(reply))
+                self.assertEqual(summary['dl_forwarded_bytes'], len(reply))
+                self.assertEqual(summary['dl_frames'], reply_frames)
+                self.assertEqual(summary['ul_received_bytes'], len(request))
+                self.assertEqual(summary['ul_forwarded_bytes'], len(request))
+                self.assertEqual(summary['ul_frames'], 1)
+                self.assertFalse(any(event['event'] in {'UL_RECV', 'DL_RECV', 'DL_FORWARD'}
+                                     for event in entries))
+
+
 if __name__=='__main__':
     unittest.main()

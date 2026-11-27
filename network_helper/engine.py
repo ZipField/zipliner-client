@@ -332,6 +332,7 @@ class Engine:
     def connection(self, client, route):
         upstream = None
         ended = threading.Event()
+        summary = {}
         with self.lock:
             # A disable can retire a route between accept() and this worker.
             if self.redirector.original((route['remote'], route['client_port'])) is None:
@@ -346,6 +347,16 @@ class Engine:
                 sock.shutdown(socket.SHUT_RDWR)
             except OSError:
                 pass
+
+        first_end = {}
+        end_lock = threading.Lock()
+
+        def record_end(event, winerror=None):
+            with end_lock:
+                if not first_end:
+                    first_end.update(first_end_event=event, first_end_winerror=winerror,
+                                     helper_stopping=self.closing or self.stop.is_set())
+
         try:
             self.log('UPSTREAM_CONNECT_STARTED', connection=ident,
                      remote=route['remote'], remote_port=SERVER_PORT)
@@ -360,6 +371,7 @@ class Engine:
                 self.connections[ident]['sockets'].append(upstream)
                 self.connections[ident]['established'] = True
             self.log('CONNECTED', connection=ident)
+            connected_at = time.monotonic()
             self.reconnect_connected.set()
             self.reconnect_deadline = None
             gate = ConnectionGate(self.state, self.positions,
@@ -400,6 +412,8 @@ class Engine:
 
             def capture_download(data):
                 nonlocal download_offset, download_received_seconds
+                offset = download_offset
+                download_offset += len(data)
                 if not self.diagnostic_log:
                     return
                 # Called once for every socket read, including bounded hold
@@ -407,19 +421,19 @@ class Engine:
                 download_received_seconds = round(time.monotonic()-self.started, 6)
                 self.log('DL_RECV', direction='DL', connection=ident,
                          received_seconds=download_received_seconds,
-                         stream_offset=download_offset, payload_bytes=len(data),
+                         stream_offset=offset, payload_bytes=len(data),
                          holding=decoder.holding,
                          sha256=hashlib.sha256(data).hexdigest())
-                download_offset += len(data)
 
             def download_forwarded(size):
                 nonlocal forwarded_offset
+                offset = forwarded_offset
+                forwarded_offset += size
                 if not self.diagnostic_log:
                     return
                 self.log('DL_FORWARD', direction='DL', connection=ident,
                          forwarded_seconds=round(time.monotonic()-self.started, 6),
-                         stream_offset=forwarded_offset, payload_bytes=size)
-                forwarded_offset += size
+                         stream_offset=offset, payload_bytes=size)
 
             revision = self.state.revision()
             def release_snapshot():
@@ -436,9 +450,14 @@ class Engine:
                 self.log('RELEASE_SNAPSHOT', connection=ident, bytes=len(output), revision=current,
                          reason='normal_position_confirmed' if position_release else 'release_request')
                 return output
+            upload_received = 0
+            upload_forwarded = 0
+            upload_frames = 0
+            upload_parser_disabled = False
+
             def upload():
+                nonlocal upload_received, upload_forwarded, upload_frames, upload_parser_disabled
                 received_seconds = None
-                stream_offset = 0
 
                 def upload_event(event, fields):
                     # Capture-only parser: its errors never disable weak networking.
@@ -459,29 +478,45 @@ class Engine:
                                                   trace_payload=self.diagnostic_log)
                 try:
                     while not self.stop.is_set() and not ended.is_set():
+                        operation = 'CLIENT_SELECT'
                         ready, _, _ = select.select([client], [], [], 0.2)
                         if not ready:
                             continue
+                        operation = 'CLIENT_RECV'
                         data = client.recv(65536)
                         if not data:
+                            record_end('CLIENT_EOF')
+                            operation = 'UPLOAD_PARSER'
                             upload_decoder.finish()
                             break
                         received_seconds = round(time.monotonic()-self.started, 6)
+                        offset = upload_received
+                        upload_received += len(data)
                         if self.diagnostic_log:
                             self.log('UL_RECV', direction='UL', connection=ident,
                                      received_seconds=received_seconds,
-                                     stream_offset=stream_offset, payload_bytes=len(data),
+                                     stream_offset=offset, payload_bytes=len(data),
                                      sha256=hashlib.sha256(data).hexdigest())
-                        stream_offset += len(data)
                         # Arm any menu allowance before forwarding its request,
                         # so a fast server response cannot overtake the allowance.
+                        operation = 'UPLOAD_PARSER'
                         upload_decoder.feed(data)
+                        operation = 'SERVER_SEND'
                         upstream.sendall(data)
-                except OSError:
-                    pass
+                        upload_forwarded += len(data)
+                except OSError as error:
+                    record_end(f'{operation}_ERROR', getattr(error, 'winerror', error.errno))
                 finally:
+                    record_end('RELAY_STOPPED')
+                    upload_frames = upload_decoder.index
+                    upload_parser_disabled = upload_decoder.disabled
                     ended.set()
                     close_direction(upstream)
+
+            def download_io(event, fields):
+                record_end(event, fields.get('winerror'))
+                self.log(event, direction='DL', connection=ident, **fields)
+
             uploader = threading.Thread(target=upload, daemon=True)
             uploader.start()
             try:
@@ -490,15 +525,23 @@ class Engine:
                                 before_tick=release_snapshot,
                                 on_receive=capture_download,
                                 on_forward=download_forwarded,
-                                on_io=lambda event, fields: self.log(
-                                    event, direction='DL', connection=ident, **fields))
+                                on_io=download_io)
             except OSError as error:
+                record_end('DOWNSTREAM_ERROR', getattr(error, 'winerror', error.errno))
                 self.log('CONNECTION_ENDED', connection=ident, error=str(error))
             finally:
+                record_end('RELAY_STOPPED')
+                connected_ms = round((time.monotonic() - connected_at) * 1000)
                 ended.set()
                 close_direction(client)
                 close_direction(upstream)
                 uploader.join(timeout=1)
+                summary = dict(first_end, connected_ms=connected_ms,
+                               dl_received_bytes=download_offset, dl_forwarded_bytes=forwarded_offset,
+                               dl_frames=decoder.index, dl_parser_disabled=decoder.disabled,
+                               ul_received_bytes=upload_received, ul_forwarded_bytes=upload_forwarded,
+                               ul_frames=upload_frames, ul_parser_disabled=upload_parser_disabled,
+                               upload_finished=not uploader.is_alive())
         except OSError as error:
             self.log('CONNECT_FAILED', connection=ident, error=str(error),
                      winerror=getattr(error, 'winerror', None), remote=route['remote'])
@@ -508,7 +551,7 @@ class Engine:
                     sock.close()
             with self.lock:
                 self.connections.pop(ident, None)
-            self.log('DISCONNECTED', connection=ident)
+            self.log('DISCONNECTED', connection=ident, **summary)
 
     def run(self):
         self.control.settimeout(0.1)
